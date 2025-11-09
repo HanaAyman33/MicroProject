@@ -7,3 +7,6 @@ target/
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Maven
+tomasulo-sim/target/
