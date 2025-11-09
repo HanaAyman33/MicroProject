@@ -491,6 +491,18 @@
                                       style="-fx-control-inner-background: #fafafa; -fx-border-color: #e0e0e0; -fx-border-radius: 4; -fx-background-radius: 4;"/>
                         </VBox>
                         
+                        <!-- Memory Initialization -->
+                        <VBox spacing="10" style="-fx-background-color: white; -fx-background-radius: 6; -fx-padding: 20;">
+                            <HBox spacing="10" alignment="CENTER_LEFT">
+                                <Label text="Memory Initialization" 
+                                       style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #333;"/>
+                                <Region HBox.hgrow="ALWAYS"/>
+                            </HBox>
+                            <Separator/>
+                            <TextArea fx:id="memoryInitArea" promptText="Enter memory initializations (e.g., 0x100=42, [256]=0xFF)..."
+                                      prefRowCount="4" wrapText="true"
+                                      style="-fx-control-inner-background: #fafafa; -fx-border-color: #e0e0e0; -fx-border-radius: 4; -fx-background-radius: 4;"/>
+                        </VBox>
                         <!-- Apply Configuration Button -->
                         <HBox spacing="10" alignment="CENTER">
                             <Button text="Apply Configuration" onAction="#onApplyConfig"

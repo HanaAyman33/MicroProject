@@ -113,6 +113,8 @@ public class MainController {
     @FXML private TextField cacheMissPenaltyField;
 
     @FXML private TextArea registerInitArea;
+    @FXML private TextArea memoryInitArea;
+
 
     // Statistics tab
     @FXML private Label totalCyclesLabel;
@@ -457,6 +459,7 @@ public class MainController {
         refreshConfigLabels();
     }
 
+    
     @FXML
     private void onLoadRegisterValues() {
         log("📂 Loading register values from file...");
