@@ -57,18 +57,43 @@ public class SimulatorState {
 
     // --- Minimal no-op backend units to enable stepping ---
     static class NoOpReservationStations implements ReservationStations {
-        @Override public boolean hasFreeFor(Instruction instr) { return true; }
-        @Override public void accept(Instruction instr, RegisterStatusTable regStatus) { /* no-op */ }
+    @Override
+    public boolean hasFreeFor(Instruction instr) { 
+        return true; 
     }
-    static class NoOpMemoryUnit implements MemoryUnitInterface {
-        @Override public boolean hasFreeFor(Instruction instr) { return true; }
-        @Override public void accept(Instruction instr, RegisterStatusTable regStatus) { /* no-op */ }
+
+    @Override
+    public void accept(Instruction instr, RegisterStatusTable regStatus) { 
+        System.out.println("[RS] Accepted: " + instr.getOpcode() + " " + instr);
     }
-    static class NoOpBranchUnit implements BranchUnitInterface {
-        @Override public boolean isFree() { return true; }
-        @Override public void accept(Instruction instr, RegisterStatusTable regStatus) { /* no-op */ }
-        @Override public boolean hasResolvedBranch() { return false; }
-        @Override public int getResolvedTargetPc() { return 0; }
-        @Override public boolean shouldFlushQueue() { return false; }
+}
+
+static class NoOpMemoryUnit implements MemoryUnitInterface {
+    @Override
+    public boolean hasFreeFor(Instruction instr) { 
+        return true; 
     }
+
+    @Override
+    public void accept(Instruction instr, RegisterStatusTable regStatus) { 
+        System.out.println("[MEM] Accepted: " + instr.getOpcode() + " " + instr);
+    }
+}
+
+static class NoOpBranchUnit implements BranchUnitInterface {
+    @Override
+    public boolean isFree() { 
+        return true; 
+    }
+
+    @Override
+    public void accept(Instruction instr, RegisterStatusTable regStatus) { 
+        System.out.println("[BRANCH] Accepted: " + instr.getOpcode() + " " + instr);
+    }
+
+    @Override public boolean hasResolvedBranch() { return false; }
+    @Override public int getResolvedTargetPc() { return 0; }
+    @Override public boolean shouldFlushQueue() { return false; }
+}
+
 }
