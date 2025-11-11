@@ -1,6 +1,9 @@
 package guc.edu.sim.core;
 
-
+/**
+ * IssueUnit is responsible for issuing instructions from the program to the
+ * Reservation Stations, Memory Unit, and Branch Unit.
+ */
 public class IssueUnit {
 
     private final Program program;
@@ -63,7 +66,7 @@ public class IssueUnit {
         }
 
         if (regStatus != null) {
-            if (regStatus.causesIllegalWAW(instr)) return false;
+            // Allow renaming: do not block on WAW at issue.
             if (regStatus.causesStructuralProblem(instr)) return false;
         }
 
@@ -77,6 +80,7 @@ public class IssueUnit {
                          RegisterStatusTable regStatus) {
 
     if (regStatus instanceof SimpleRegisterStatusTable s) {
+        // RS implementation should set precise producer tag upon allocation.
         s.markDestBusy(instr);
     }
 

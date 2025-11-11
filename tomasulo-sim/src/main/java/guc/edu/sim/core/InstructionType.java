@@ -1,10 +1,14 @@
 package guc.edu.sim.core;
 
+/**
+ * Enum representing instruction categories used by the simulator.
+ * Matches usage in IssueUnit, ProgramLoader, and UI controller.
+ */
 public enum InstructionType {
-    ALU_FP,     // FP ADD.D, SUB.D, MUL.D, DIV.D
-    ALU_INT,    // integer ops like DADDI, DSUBI
-    LOAD,       // L.D, LW, L.S
-    STORE,      // S.D, SW
-    BRANCH,     // BEQ, BNE
+    LOAD,
+    STORE,
+    BRANCH,
+    ALU_FP,
+    ALU_INT,
     UNKNOWN
 }
