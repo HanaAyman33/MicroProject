@@ -23,6 +23,20 @@ public class RegisterFile {
         regs.put(name, value);
     }
 
+    public int getRegisterValue(String register) {
+        Object value = regs.get(register);
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        return 0; // Default value if register not found or not a number
+    }
+    
+    public void setRegisterValue(String register, int value) {
+        if (register != null) {
+            regs.put(register, value);
+        }
+    }
+    
     public void preload(Map<String, Object> initialValues) {
         if (initialValues == null) return;
         for (Map.Entry<String, Object> e : initialValues.entrySet()) {
