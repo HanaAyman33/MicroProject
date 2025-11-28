@@ -9,8 +9,8 @@
     <version>1.0-SNAPSHOT</version>
 
     <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <!-- Use a single release property (easier and recommended) -->
+        <maven.compiler.release>21</maven.compiler.release>
         <javafx.version>21.0.2</javafx.version>
     </properties>
 
@@ -22,7 +22,7 @@
             <version>${javafx.version}</version>
         </dependency>
 
-        <!-- JavaFX FXML (we’ll use it later for proper UI) -->
+        <!-- JavaFX FXML -->
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-fxml</artifactId>
@@ -32,14 +32,13 @@
 
     <build>
         <plugins>
-            <!-- Make sure we compile with Java 21 -->
+            <!-- Make sure we compile with the configured release -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <source>${maven.compiler.source}</source>
-                    <target>${maven.compiler.target}</target>
+                    <release>${maven.compiler.release}</release>
                 </configuration>
             </plugin>
 
