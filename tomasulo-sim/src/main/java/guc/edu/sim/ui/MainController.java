@@ -436,18 +436,18 @@ public class MainController {
         fileChooser.setTitle("Open Program File");
         fileChooser. getExtensionFilters().addAll(
                 new FileChooser.ExtensionFilter("Assembly Files", "*.asm", "*.s"),
-                new FileChooser.ExtensionFilter("Text Files", "*.txt"),
+                new FileChooser. ExtensionFilter("Text Files", "*.txt"),
                 new FileChooser. ExtensionFilter("All Files", "*.*")
         );
-        File file = fileChooser.showOpenDialog(logArea.getScene().getWindow());
+        File file = fileChooser.showOpenDialog(logArea. getScene().getWindow());
         if (file != null) {
             try {
                 List<String> lines = Files.readAllLines(file.toPath());
                 if (sim == null) sim = new SimulatorState();
                 sim.loadProgramLines(lines);
                 
-                // Apply initial configuration and values
-                onApplyConfig();
+                // Apply configuration with defaults (don't call onApplyConfig which requires UI fields)
+                applyDefaultConfiguration();
                 
                 renderProgram(sim.getProgram());
                 cycle = SimulationClock.getCycle();
@@ -467,6 +467,28 @@ public class MainController {
                 updateStatusBar("Load failed");
             }
         }
+    }
+
+    // New helper method to apply default configuration
+    private void applyDefaultConfiguration() {
+        if (sim == null || ! sim.isProgramLoaded()) return;
+        
+        // Get values from UI if available, otherwise use defaults
+        int fpAdd = getIntValue(addSubSizeField, 3);
+        int fpMul = getIntValue(mulDivSizeField, 2);
+        int loadBufSize = getIntValue(loadBufferSizeField, 3);
+        int storeBufSize = getIntValue(storeBufferSizeField, 3);
+        int cacheSz = getIntValue(cacheSizeField, 64);
+        int blockSz = getIntValue(blockSizeField, 16);
+        int hitLat = getIntValue(cacheHitLatencyField, 1);
+        int missPen = getIntValue(cacheMissPenaltyField, 10);
+        
+        sim.setConfiguration(fpAdd, fpMul, 2, loadBufSize, storeBufSize, 
+                           cacheSz, blockSz, hitLat, missPen);
+        
+        // Load initial values from text areas if they exist
+        parseAndLoadRegisterValues();
+        parseAndLoadMemoryValues();
     }
 
     @FXML
@@ -522,16 +544,16 @@ public class MainController {
     private void onApplyConfig() {
         try {
             if (sim != null && sim.isProgramLoaded()) {
-                int fpAdd = Integer.parseInt(addSubSizeField.getText());
-                int fpMul = Integer.parseInt(mulDivSizeField.getText());
-                int loadBufSize = Integer.parseInt(loadBufferSizeField.getText());    // CHANGED
-                int storeBufSize = Integer.parseInt(storeBufferSizeField.getText()); // CHANGED
-                int cacheSz = Integer.parseInt(cacheSizeField.getText());
-                int blockSz = Integer.parseInt(blockSizeField.getText());
-                int hitLat = Integer.parseInt(cacheHitLatencyField.getText());
-                int missPen = Integer.parseInt(cacheMissPenaltyField.getText());
+                // Use defaults if fields are null or empty
+                int fpAdd = getIntValue(addSubSizeField, 3);
+                int fpMul = getIntValue(mulDivSizeField, 2);
+                int loadBufSize = getIntValue(loadBufferSizeField, 3);
+                int storeBufSize = getIntValue(storeBufferSizeField, 3);
+                int cacheSz = getIntValue(cacheSizeField, 64);
+                int blockSz = getIntValue(blockSizeField, 16);
+                int hitLat = getIntValue(cacheHitLatencyField, 1);
+                int missPen = getIntValue(cacheMissPenaltyField, 10);
                 
-                // CHANGED: Pass separate buffer sizes
                 sim.setConfiguration(fpAdd, fpMul, 2, loadBufSize, storeBufSize, 
                                    cacheSz, blockSz, hitLat, missPen);
                 
@@ -547,6 +569,20 @@ public class MainController {
         } catch (Exception e) {
             log("❌ Error applying configuration: " + e.getMessage());
             e.printStackTrace();
+        }
+    }
+
+    // Helper method to safely get integer value from TextField
+    private int getIntValue(TextField field, int defaultValue) {
+        if (field == null) return defaultValue;
+        try {
+            String text = field.getText();
+            if (text == null || text.trim().isEmpty()) {
+                return defaultValue;
+            }
+            return Integer.parseInt(text.trim());
+        } catch (NumberFormatException e) {
+            return defaultValue;
         }
     }
 
@@ -910,7 +946,7 @@ public class MainController {
 
     private void refreshCacheStats() {
         if (cacheHitsLabel != null) {
-            cacheHitsLabel.setText(String.valueOf(cacheHits));
+            cacheHitsLabel.setText(String. valueOf(cacheHits));
         }
         if (cacheMissesLabel != null) {
             cacheMissesLabel.setText(String.valueOf(cacheMisses));
@@ -918,7 +954,7 @@ public class MainController {
         if (hitRateLabel != null) {
             int total = cacheHits + cacheMisses;
             double rate = total > 0 ? (100.0 * cacheHits / total) : 0.0;
-            hitRateLabel.setText(String.format("%. 1f%%", rate));
+            hitRateLabel. setText(String.format("%.1f%%", rate));  // FIXED: %. 1f not %.  1f
         }
     }
 

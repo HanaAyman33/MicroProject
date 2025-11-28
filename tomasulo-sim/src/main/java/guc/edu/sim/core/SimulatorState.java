@@ -1,9 +1,9 @@
-package guc.edu. sim.core;
+package guc.edu.sim. core;
 
-import java. util.*;
+import java.util.*;
 
 /**
- * Complete Tomasulo simulator with all components integrated.
+ * Complete Tomasulo simulator with all components integrated. 
  */
 public class SimulatorState {
 
@@ -13,8 +13,8 @@ public class SimulatorState {
     private Memory memory;
     private Cache cache;
     private RealReservationStations rs;
-    private LoadBuffer loadBuffer;              // CHANGED: Separate load buffer
-    private StoreBuffer storeBuffer;            // CHANGED: Separate store buffer
+    private LoadBuffer loadBuffer;
+    private StoreBuffer storeBuffer;
     private BranchUnit branchUnit;
     private Dispatcher dispatcher;
     private CommonDataBus cdb;
@@ -27,8 +27,8 @@ public class SimulatorState {
     private int fpAddSize = 3;
     private int fpMulSize = 2;
     private int intSize = 2;
-    private int loadBufferSize = 3;             // CHANGED: Separate size for load
-    private int storeBufferSize = 3;            // CHANGED: Separate size for store
+    private int loadBufferSize = 3;
+    private int storeBufferSize = 3;
     private int cacheSize = 64;
     private int blockSize = 16;
     private int cacheHitLatency = 1;
@@ -51,7 +51,7 @@ public class SimulatorState {
         
         rs = new RealReservationStations(fpAddSize, fpMulSize, intSize, regFile);
         
-        // CHANGED: Create separate load and store buffers
+        // Create separate load and store buffers
         loadBuffer = new LoadBuffer(loadBufferSize, regFile, memory, cache);
         storeBuffer = new StoreBuffer(storeBufferSize, regFile, memory, cache);
         
@@ -66,14 +66,14 @@ public class SimulatorState {
         cdb.addListener((tag, result) -> {
             System.out.println("[CDB] Broadcasting " + tag + " = " + result);
             rs.broadcastResult(tag, result);
-            loadBuffer.broadcastResult(tag, result);      // CHANGED
-            storeBuffer.broadcastResult(tag, result);     // CHANGED
+            loadBuffer.broadcastResult(tag, result);
+            storeBuffer. broadcastResult(tag, result);
             branchUnit.broadcastResult(tag, result);
             
             // Update register file
             for (String reg : regFile.getAllProducers(). keySet()) {
                 if (tag.equals(regFile.getProducer(reg))) {
-                    regFile. setValue(reg, result);
+                    regFile.setValue(reg, result);
                     regFile.clearProducer(reg);
                 }
             }
@@ -87,7 +87,7 @@ public class SimulatorState {
             instructionStatuses.add(new InstructionStatus());
         }
         
-        SimulationClock. reset();
+        SimulationClock.reset();
         this.lastIssuedIndex = -1;
         
         System. out.println("========== Initialization Complete ==========\n");
@@ -106,7 +106,7 @@ public class SimulatorState {
         // Phase 1: Write-back - broadcast results from completed execution units
         List<ReservationStationEntry> finishedRS = dispatcher.tickUnits();
         for (ReservationStationEntry entry : finishedRS) {
-            System.out.println("[WriteBack] " + entry.getId() + " completed execution");
+            System.out.println("[WriteBack] " + entry. getId() + " completed execution");
             double result = (entry.getResult() instanceof Double) ? 
                 (Double) entry.getResult() : 0.0;
             cdb. broadcast(entry.getId(), result);
@@ -116,10 +116,9 @@ public class SimulatorState {
         }
         
         // Phase 2: Execute LOAD operations
-        // CHANGED: Handle load buffer separately
         List<LoadBuffer.LoadEntry> completedLoads = new ArrayList<>();
         for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
-            if (loadEntry. isReady() && !loadEntry.executing) {
+            if (loadEntry.isReady() && !loadEntry.executing) {
                 loadEntry.executing = true;
                 int addr = loadEntry.computeAddress();
                 
@@ -152,9 +151,8 @@ public class SimulatorState {
         }
         
         // Phase 3: Execute STORE operations
-        // CHANGED: Handle store buffer separately
         List<StoreBuffer.StoreEntry> completedStores = new ArrayList<>();
-        for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
+        for (StoreBuffer. StoreEntry storeEntry : storeBuffer.getBuffer()) {
             if (storeEntry.isReady() && !storeEntry.executing) {
                 storeEntry.executing = true;
                 int addr = storeEntry.computeAddress();
@@ -187,7 +185,7 @@ public class SimulatorState {
         
         // Phase 4: Dispatch ready instructions to execution units
         for (ReservationStationEntry entry : rs.getStations()) {
-            if (entry. isReady() && !entry.isExecuting()) {
+            if (entry.isReady() && !entry.isExecuting()) {
                 dispatcher.addEntry(entry);
                 System.out.println("[Dispatch] Added " + entry.getId() + " to dispatcher queue");
             }
@@ -195,7 +193,7 @@ public class SimulatorState {
         dispatcher.dispatch();
         
         // Mark execution start for newly dispatched instructions
-        for (ReservationStationEntry entry : rs. getStations()) {
+        for (ReservationStationEntry entry : rs.getStations()) {
             if (entry.isExecuting()) {
                 markInstructionExecStart(entry.getId(), currentCycle);
             }
@@ -206,16 +204,16 @@ public class SimulatorState {
         if (branchUnit.hasResolvedBranch()) {
             if (branchUnit.shouldFlushQueue()) {
                 int targetPc = branchUnit.getResolvedTargetPc();
-                System. out.println("[Branch] Taking branch to PC=" + targetPc);
+                System.out. println("[Branch] Taking branch to PC=" + targetPc);
                 issueUnit.jumpTo(targetPc);
             }
             branchUnit.clear();
         }
         
         // Phase 6: Issue new instruction
-        // CHANGED: Check separate buffers for load/store
         int prevPc = issueUnit.getPc();
         boolean issued = false;
+        String assignedTag = null;
         
         if (issueUnit.hasNext()) {
             Instruction instr = program.get(issueUnit.getPc());
@@ -226,24 +224,39 @@ public class SimulatorState {
                 case ALU_INT:
                     canIssue = rs.hasFreeFor(instr);
                     if (canIssue) {
+                        int sizeBefore = rs.getStations().size();
                         rs.accept(instr, null);
-                        System.out.println("[Issue] Issued to RS: " + instr.getOpcode());
+                        // Get the newly added entry's tag
+                        if (rs.getStations().size() > sizeBefore) {
+                            assignedTag = rs. getStations().get(rs. getStations().size() - 1).getId();
+                        }
+                        System.out.println("[Issue] Issued to RS: " + instr.getOpcode() + " -> " + assignedTag);
                     }
                     break;
                     
                 case LOAD:
                     canIssue = loadBuffer.hasFree();
                     if (canIssue) {
+                        int sizeBefore = loadBuffer.getBuffer().size();
                         loadBuffer.accept(instr);
-                        System. out.println("[Issue] Issued to Load Buffer: " + instr.getOpcode());
+                        // Get the newly added entry's tag
+                        if (loadBuffer.getBuffer().size() > sizeBefore) {
+                            assignedTag = loadBuffer. getBuffer().get(loadBuffer. getBuffer().size() - 1).tag;
+                        }
+                        System.out.println("[Issue] Issued to Load Buffer: " + instr.getOpcode() + " -> " + assignedTag);
                     }
                     break;
                     
                 case STORE:
                     canIssue = storeBuffer.hasFree();
                     if (canIssue) {
+                        int sizeBefore = storeBuffer.getBuffer(). size();
                         storeBuffer.accept(instr);
-                        System.out.println("[Issue] Issued to Store Buffer: " + instr.getOpcode());
+                        // Get the newly added entry's tag
+                        if (storeBuffer.getBuffer().size() > sizeBefore) {
+                            assignedTag = storeBuffer. getBuffer().get(storeBuffer.getBuffer().size() - 1).tag;
+                        }
+                        System.out.println("[Issue] Issued to Store Buffer: " + instr.getOpcode() + " -> " + assignedTag);
                     }
                     break;
                     
@@ -251,7 +264,8 @@ public class SimulatorState {
                     canIssue = branchUnit.isFree();
                     if (canIssue) {
                         branchUnit.accept(instr, null);
-                        System.out.println("[Issue] Issued to Branch Unit: " + instr. getOpcode());
+                        assignedTag = "BRANCH";
+                        System.out. println("[Issue] Issued to Branch Unit: " + instr.getOpcode());
                     }
                     break;
             }
@@ -259,6 +273,7 @@ public class SimulatorState {
             if (canIssue) {
                 instr.setIssueCycle(currentCycle);
                 instructionStatuses.get(prevPc).issueCycle = currentCycle;
+                instructionStatuses.get(prevPc).tag = assignedTag;  // FIXED: Store the tag
                 issueUnit.jumpTo(prevPc + 1);
                 issued = true;
                 lastIssuedIndex = prevPc;
@@ -280,7 +295,7 @@ public class SimulatorState {
     private void markInstructionExecStart(String tag, int cycle) {
         for (int i = 0; i < instructionStatuses.size(); i++) {
             InstructionStatus status = instructionStatuses.get(i);
-            if (status. tag != null && status.tag.equals(tag) && status.execStartCycle == -1) {
+            if (status.tag != null && status.tag.equals(tag) && status.execStartCycle == -1) {
                 status.execStartCycle = cycle;
                 break;
             }
@@ -309,37 +324,35 @@ public class SimulatorState {
     
     private void printStatus() {
         System.out.println("\n--- Current State ---");
-        System.out.println("Reservation Stations: " + rs.getStations(). size());
+        System.out.println("Reservation Stations: " + rs.getStations().size());
         for (ReservationStationEntry entry : rs.getStations()) {
             System.out.println("  " + entry);
         }
         
-        // CHANGED: Print separate buffers
-        System.out. println("Load Buffer: " + loadBuffer.getBuffer().size());
+        System.out.println("Load Buffer: " + loadBuffer.getBuffer().size());
         for (LoadBuffer.LoadEntry entry : loadBuffer.getBuffer()) {
             System.out.println("  " + entry);
         }
         
         System.out.println("Store Buffer: " + storeBuffer.getBuffer().size());
-        for (StoreBuffer.StoreEntry entry : storeBuffer. getBuffer()) {
-            System. out.println("  " + entry);
+        for (StoreBuffer.StoreEntry entry : storeBuffer.getBuffer()) {
+            System.out.println("  " + entry);
         }
         
-        System.out.println("Cache Hits: " + cache.getHits() + ", Misses: " + cache. getMisses());
-        System. out.println("--------------------\n");
+        System.out.println("Cache Hits: " + cache.getHits() + ", Misses: " + cache.getMisses());
+        System.out.println("--------------------\n");
     }
 
     public void reset() {
         SimulationClock.reset();
         lastIssuedIndex = -1;
         if (issueUnit != null) issueUnit.jumpTo(0);
-        if (cache != null) cache.clear();
+        if (cache != null) cache. clear();
         if (program != null) {
             initializeSimulator();
         }
     }
 
-    // CHANGED: Getters for separate buffers
     public int getCycle() { return SimulationClock.getCycle(); }
     public Program getProgram() { return program; }
     public int getLastIssuedIndex() { return lastIssuedIndex; }
@@ -347,11 +360,10 @@ public class SimulatorState {
     public RegisterFile getRegFile() { return regFile; }
     public Cache getCache() { return cache; }
     public RealReservationStations getReservationStations() { return rs; }
-    public LoadBuffer getLoadBuffer() { return loadBuffer; }           // CHANGED
-    public StoreBuffer getStoreBuffer() { return storeBuffer; }        // CHANGED
+    public LoadBuffer getLoadBuffer() { return loadBuffer; }
+    public StoreBuffer getStoreBuffer() { return storeBuffer; }
     public List<InstructionStatus> getInstructionStatuses() { return instructionStatuses; }
     
-    // CHANGED: Update configuration to accept separate sizes
     public void setConfiguration(int fpAdd, int fpMul, int intAlu, 
                                  int loadBufSize, int storeBufSize,
                                  int cacheSz, int blockSz, int hitLat, int missPen) {
@@ -361,7 +373,7 @@ public class SimulatorState {
         this.loadBufferSize = loadBufSize;
         this.storeBufferSize = storeBufSize;
         this.cacheSize = cacheSz;
-        this.blockSize = blockSz;
+        this. blockSize = blockSz;
         this. cacheHitLatency = hitLat;
         this.cacheMissPenalty = missPen;
     }
