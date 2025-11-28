@@ -963,26 +963,26 @@ public class MainController {
         
         if (completedInstrLabel != null) {
             long completed = instructions.stream()
-                    .filter(i -> !i.getWriteBack().equals("-"))
+                    .filter(i -> ! i.getWriteBack(). equals("-"))
                     .count();
             completedInstrLabel.setText(String.valueOf(completed));
         }
         
         if (ipcLabel != null && cycle > 0) {
             long completed = instructions.stream()
-                    .filter(i -> !i. getWriteBack().equals("-"))
+                    . filter(i -> !i.getWriteBack().equals("-"))
                     .count();
             double ipc = (double) completed / cycle;
-            ipcLabel.setText(String. format("%. 2f", ipc));
+            ipcLabel.setText(String.format("%.2f", ipc));  // FIXED: %. 2f not %. 2f
         }
         
         if (cpiLabel != null && cycle > 0) {
             long completed = instructions.stream()
                     .filter(i -> !i.getWriteBack().equals("-"))
-                    .count();
+                    . count();
             if (completed > 0) {
                 double cpi = (double) cycle / completed;
-                cpiLabel.setText(String.format("%. 2f", cpi));
+                cpiLabel.setText(String.format("%.2f", cpi));  // FIXED: %.2f not %. 2f
             }
         }
     }
