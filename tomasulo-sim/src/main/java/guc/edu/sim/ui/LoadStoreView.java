@@ -16,7 +16,11 @@ public class LoadStoreView {
         this.busy.set(busy);
     }
 
-    public String getName() { return name.get(); }
+    public LoadStoreView(String tag, String opcode, String valueOf, Object object, boolean b) {
+		// TODO Auto-generated constructor stub
+	}
+
+	public String getName() { return name.get(); }
     public StringProperty nameProperty() { return name; }
 
     public String getOp() { return op.get(); }

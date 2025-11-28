@@ -12,10 +12,16 @@ import java.io.File;
 import java.nio.file.Files;
 import java.util.List;
 
+import guc.edu.sim.core.Cache;
 import guc.edu.sim.core.Instruction;
+import guc.edu.sim.core.InstructionType;
+import guc.edu.sim.core.LoadStoreBuffer;
 import guc.edu.sim.core.Program;
 import guc.edu.sim.core.ProgramLoader;
+import guc.edu.sim.core.RegisterFile;
+import guc.edu.sim.core.ReservationStationEntry;
 import guc.edu.sim.core.SimulatorState;
+import guc.edu.sim.core.StationType;
 import guc.edu.sim.core.SimulationClock;
 
 public class MainController {
@@ -274,20 +280,6 @@ public class MainController {
     // ========== Button Handlers ==========
 
     @FXML
-    private void onRun() {
-        if (isRunning) {
-            log("⚠ Simulation already running");
-            return;
-        }
-        isRunning = true;
-        statusLabel.setText("Running");
-        statusLabel.setStyle("-fx-font-size: 14; -fx-font-weight: bold; -fx-text-fill: #4CAF50;");
-        log("▶ Starting continuous simulation...");
-        updateStatusBar("Simulation running...");
-        // TODO: Optional: implement timer to step repeatedly
-    }
-
-    @FXML
     private void onPause() {
         if (!isRunning) {
             log("⚠ Simulation not running");
@@ -299,26 +291,207 @@ public class MainController {
         log("⏸ Simulation paused at cycle " + cycle);
         updateStatusBar("Simulation paused");
     }
+    
+    @FXML
+    private void onRun() {
+        if (isRunning) {
+            log("⚠ Simulation already running");
+            return;
+        }
+        if (sim == null || ! sim.isProgramLoaded()) {
+            log("⚠ No program loaded");
+            return;
+        }
+        
+        isRunning = true;
+        statusLabel.setText("Running");
+        statusLabel.setStyle("-fx-font-size: 14; -fx-font-weight: bold; -fx-text-fill: #4CAF50;");
+        log("▶ Starting continuous simulation.. .");
+        
+        // Run simulation in background thread
+        new Thread(() -> {
+            while (isRunning && sim. getIssueUnit().hasNext()) {
+                try {
+                    Thread.sleep(500); // 500ms delay between cycles
+                    Platform.runLater(() -> {
+                        if (isRunning) {
+                            stepSimulation();
+                        }
+                    });
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            Platform.runLater(() -> {
+                isRunning = false;
+                statusLabel.setText("Completed");
+                statusLabel.setStyle("-fx-font-size: 14; -fx-font-weight: bold; -fx-text-fill: #2196F3;");
+                log("✓ Simulation completed");
+            });
+        }).start();
+    }
 
     @FXML
     private void onStep() {
         if (sim == null || !sim.isProgramLoaded()) {
-            log("⚠ No program loaded. Use File > Open Program...");
+            log("⚠ No program loaded.  Use File > Open Program.. .");
             return;
         }
-        boolean issued = sim.step();
-        cycle = sim.getCycle();
-        refreshAllLabels();
-        if (issued) {
-            int idx = sim.getLastIssuedIndex();
-            if (idx >= 0 && idx < instructions.size()) {
-                instructions.get(idx).issueProperty().set(String.valueOf(cycle));
-            }
-        }
-        log("⏭ Stepped to cycle " + cycle);
-        updateStatusBar("Executed cycle " + cycle);
+        stepSimulation();
     }
 
+    private void stepSimulation() {
+        try {
+            boolean issued = sim.step();
+            cycle = sim.getCycle();
+            
+            // Update UI with backend state
+            updateReservationStations();
+            updateLoadStoreBuffers();
+            updateRegisters();
+            updateCacheView();
+            
+            refreshAllLabels();
+            
+            if (issued) {
+                int idx = sim.getLastIssuedIndex();
+                if (idx >= 0 && idx < instructions.size()) {
+                    instructions.get(idx).issueProperty().set(String.valueOf(cycle));
+                }
+            }
+            
+            log("⏭ Stepped to cycle " + cycle);
+            updateStatusBar("Executed cycle " + cycle);
+            
+        } catch (Exception e) {
+            log("❌ Error during simulation step: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private void updateReservationStations() {
+        addSubStations. clear();
+        mulDivStations.clear();
+        
+        if (sim.getReservationStations() != null) {
+            for (ReservationStationEntry entry : sim.getReservationStations(). getStations()) {
+                String vjStr = (entry.getVj() != null) ? String.valueOf(entry.getVj()) : "-";
+                String vkStr = (entry.getVk() != null) ? String.valueOf(entry.getVk()) : "-";
+                String qjStr = (entry.getQj() != null) ? entry.getQj() : "-";
+                String qkStr = (entry.getQk() != null) ? entry.getQk() : "-";
+                
+                ReservationStationView view = new ReservationStationView(
+                    entry.getId(),
+                    entry.getOpcode(),
+                    vjStr,
+                    vkStr,
+                    qjStr,
+                    qkStr,
+                    true
+                );
+                
+                if (entry.getType() == StationType.FP_ADD) {
+                    addSubStations.add(view);
+                } else if (entry.getType() == StationType.FP_MUL) {
+                    mulDivStations.add(view);
+                }
+            }
+        }
+    }
+
+    private void updateLoadStoreBuffers() {
+        loadStoreBuffers.clear();
+        
+        if (sim. getLoadStoreBuffer() != null) {
+            for (LoadStoreBuffer. LoadStoreEntry entry : sim.getLoadStoreBuffer().getBuffer()) {
+                String address = entry.baseReady ? 
+                    String.valueOf(entry.computeAddress()) : 
+                    "Waiting";
+                
+                String destSrc = (entry.instruction.getType() == InstructionType.LOAD) ? 
+                    entry.instruction.getDest() : 
+                    entry. instruction.getSrc1();
+                
+                LoadStoreView view = new LoadStoreView(
+                    entry.tag,
+                    entry.instruction.getOpcode(),
+                    address,
+                    destSrc != null ? destSrc : "-",
+                    true
+                );
+                loadStoreBuffers.add(view);
+            }
+        }
+    }
+
+    private void updateRegisters() {
+        intRegisters.clear();
+        fpRegisters.clear();
+        
+        if (sim.getRegFile() != null) {
+            RegisterFile rf = sim.getRegFile();
+            
+            // Integer registers
+            for (int i = 0; i < 32; i++) {
+                String reg = "R" + i;
+                double value = rf. getValue(reg);
+                String valueStr = String.format("%.1f", value);
+                String producer = rf.getProducer(reg);
+                String producerStr = (producer != null) ? producer : "";
+                
+                intRegisters.add(new RegisterView(reg, valueStr, producerStr));
+            }
+            
+            // FP registers
+            for (int i = 0; i < 32; i++) {
+                String reg = "F" + i;
+                double value = rf. getValue(reg);
+                String valueStr = String.format("%.1f", value);
+                String producer = rf.getProducer(reg);
+                String producerStr = (producer != null) ? producer : "";
+                
+                fpRegisters.add(new RegisterView(reg, valueStr, producerStr));
+            }
+        }
+    }
+
+    private void updateCacheView() {
+        cacheLines.clear();
+        
+        if (sim.getCache() != null) {
+            Cache cache = sim.getCache();
+            cacheHits = cache.getHits();
+            cacheMisses = cache. getMisses();
+            
+            Cache.CacheLine[] lines = cache.getLines();
+            for (int i = 0; i < lines.length; i++) {
+                Cache.CacheLine line = lines[i];
+                String tagStr = line.isValid() ? String.valueOf(line.getTag()) : "-";
+                String dataStr = line.isValid() ? bytesToHex(line.getData()) : "-";
+                
+                cacheLines. add(new CacheLineView(i, line.isValid(), tagStr, dataStr));
+            }
+        }
+    }
+
+    private String bytesToHex(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return "-";
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < Math.min(8, bytes.length); i++) {
+            sb.append(String. format("%02X ", bytes[i]));
+        }
+        return sb.toString(). trim();
+    }
+
+    private void updateInstructionTable() {
+        // Update execution status in instruction table
+        // This would require tracking execution state per instruction
+        // You can enhance this based on your needs
+    }
+    
     @FXML
     private void onReset() {
         cycle = 0;
