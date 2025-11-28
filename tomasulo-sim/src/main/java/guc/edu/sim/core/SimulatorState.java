@@ -1,9 +1,10 @@
-package guc. edu.sim.core;
+package guc.edu. sim.core;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java. util.*;
 
+/**
+ * Complete Tomasulo simulator with all components integrated.
+ */
 public class SimulatorState {
 
     private Program program;
@@ -12,20 +13,22 @@ public class SimulatorState {
     private Memory memory;
     private Cache cache;
     private RealReservationStations rs;
-    private LoadStoreBuffer loadStoreBuffer;
+    private LoadBuffer loadBuffer;              // CHANGED: Separate load buffer
+    private StoreBuffer storeBuffer;            // CHANGED: Separate store buffer
     private BranchUnit branchUnit;
     private Dispatcher dispatcher;
     private CommonDataBus cdb;
-    private SimulationController controller;
     private LatencyConfig latencyConfig;
     
     private int lastIssuedIndex = -1;
+    private List<InstructionStatus> instructionStatuses = new ArrayList<>();
     
     // Configuration
     private int fpAddSize = 3;
     private int fpMulSize = 2;
     private int intSize = 2;
-    private int loadStoreSize = 3;
+    private int loadBufferSize = 3;             // CHANGED: Separate size for load
+    private int storeBufferSize = 3;            // CHANGED: Separate size for store
     private int cacheSize = 64;
     private int blockSize = 16;
     private int cacheHitLatency = 1;
@@ -47,7 +50,11 @@ public class SimulatorState {
         cache = new Cache(cacheSize, blockSize, cacheHitLatency, cacheMissPenalty);
         
         rs = new RealReservationStations(fpAddSize, fpMulSize, intSize, regFile);
-        loadStoreBuffer = new LoadStoreBuffer(loadStoreSize, regFile, memory, cache);
+        
+        // CHANGED: Create separate load and store buffers
+        loadBuffer = new LoadBuffer(loadBufferSize, regFile, memory, cache);
+        storeBuffer = new StoreBuffer(storeBufferSize, regFile, memory, cache);
+        
         branchUnit = new BranchUnit(regFile, program);
         
         dispatcher = new Dispatcher(latencyConfig);
@@ -57,8 +64,10 @@ public class SimulatorState {
         
         cdb = new CommonDataBus();
         cdb.addListener((tag, result) -> {
+            System.out.println("[CDB] Broadcasting " + tag + " = " + result);
             rs.broadcastResult(tag, result);
-            loadStoreBuffer.broadcastResult(tag, result);
+            loadBuffer.broadcastResult(tag, result);      // CHANGED
+            storeBuffer.broadcastResult(tag, result);     // CHANGED
             branchUnit.broadcastResult(tag, result);
             
             // Update register file
@@ -71,12 +80,17 @@ public class SimulatorState {
         });
         
         issueUnit = new IssueUnit(program);
-        controller = new SimulationController(issueUnit, rs, loadStoreBuffer, branchUnit, null);
+        
+        // Initialize instruction statuses
+        instructionStatuses.clear();
+        for (int i = 0; i < program.size(); i++) {
+            instructionStatuses.add(new InstructionStatus());
+        }
         
         SimulationClock. reset();
         this.lastIssuedIndex = -1;
         
-        System.out.println("========== Initialization Complete ==========\n");
+        System. out.println("========== Initialization Complete ==========\n");
     }
 
     public boolean isProgramLoaded() {
@@ -84,64 +98,235 @@ public class SimulatorState {
     }
 
     public boolean step() {
-        if (controller == null || issueUnit == null) return false;
+        if (program == null || issueUnit == null) return false;
         
-        System.out.println("\n========== Cycle " + (SimulationClock.getCycle() + 1) + " ==========");
+        int currentCycle = SimulationClock.getCycle() + 1;
+        System.out.println("\n========== Cycle " + currentCycle + " ==========");
         
-        // 1. Write-back phase: broadcast results
-        List<ReservationStationEntry> finished = dispatcher.tickUnits();
-        for (ReservationStationEntry entry : finished) {
+        // Phase 1: Write-back - broadcast results from completed execution units
+        List<ReservationStationEntry> finishedRS = dispatcher.tickUnits();
+        for (ReservationStationEntry entry : finishedRS) {
+            System.out.println("[WriteBack] " + entry.getId() + " completed execution");
             double result = (entry.getResult() instanceof Double) ? 
                 (Double) entry.getResult() : 0.0;
             cdb. broadcast(entry.getId(), result);
             rs.removeEntry(entry);
+            
+            markInstructionWriteBack(entry. getId(), currentCycle);
         }
         
-        // Execute load/store operations
-        for (LoadStoreBuffer.LoadStoreEntry lsEntry : loadStoreBuffer.getBuffer()) {
-            if (lsEntry.isReady() && ! lsEntry.executing) {
-                lsEntry.executing = true;
-                int addr = lsEntry.computeAddress();
+        // Phase 2: Execute LOAD operations
+        // CHANGED: Handle load buffer separately
+        List<LoadBuffer.LoadEntry> completedLoads = new ArrayList<>();
+        for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
+            if (loadEntry. isReady() && !loadEntry.executing) {
+                loadEntry.executing = true;
+                int addr = loadEntry.computeAddress();
                 
-                if (lsEntry.instruction.getType() == InstructionType. LOAD) {
-                    Cache.CacheAccessResult result = cache.access(addr, memory);
-                    lsEntry.remainingCycles = result.latency;
-                    lsEntry.result = memory.loadDouble(addr);
-                    System.out.println("[LoadStore] " + lsEntry.tag + " loading from addr " + addr);
-                } else {
-                    lsEntry.remainingCycles = cacheHitLatency;
-                    memory.storeDouble(addr, lsEntry.storeValue);
-                    System. out.println("[LoadStore] " + lsEntry.tag + " storing to addr " + addr);
-                }
+                Cache.CacheAccessResult result = cache.access(addr, memory);
+                loadEntry.remainingCycles = result.latency;
+                loadEntry.result = memory.loadDouble(addr);
+                System.out.println("[LoadBuffer] " + loadEntry.tag + " LOADING from address " + addr + 
+                                 " (latency=" + result.latency + " cycles)");
+                markInstructionExecStart(loadEntry.tag, currentCycle);
             }
             
-            if (lsEntry. executing) {
-                lsEntry.remainingCycles--;
-                if (lsEntry.remainingCycles <= 0) {
-                    if (lsEntry.instruction.getType() == InstructionType. LOAD) {
-                        cdb.broadcast(lsEntry. tag, lsEntry.result);
-                    }
-                    loadStoreBuffer.removeEntry(lsEntry);
+            if (loadEntry.executing) {
+                loadEntry.remainingCycles--;
+                System.out.println("[LoadBuffer] " + loadEntry.tag + " executing...  " + 
+                                 loadEntry.remainingCycles + " cycles remaining");
+                
+                if (loadEntry.remainingCycles <= 0) {
+                    System.out.println("[LoadBuffer] " + loadEntry.tag + " COMPLETED with value " + loadEntry.result);
+                    cdb.broadcast(loadEntry.tag, loadEntry.result);
+                    markInstructionExecEnd(loadEntry.tag, currentCycle);
+                    markInstructionWriteBack(loadEntry.tag, currentCycle);
+                    completedLoads. add(loadEntry);
                 }
             }
         }
         
-        // Resolve branches
-        branchUnit.tryResolve();
+        // Remove completed load entries
+        for (LoadBuffer. LoadEntry entry : completedLoads) {
+            loadBuffer.removeEntry(entry);
+        }
         
-        // 2.  Execution phase: dispatch ready instructions
+        // Phase 3: Execute STORE operations
+        // CHANGED: Handle store buffer separately
+        List<StoreBuffer.StoreEntry> completedStores = new ArrayList<>();
+        for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
+            if (storeEntry.isReady() && !storeEntry.executing) {
+                storeEntry.executing = true;
+                int addr = storeEntry.computeAddress();
+                
+                storeEntry.remainingCycles = cacheHitLatency;
+                memory.storeDouble(addr, storeEntry.storeValue);
+                System.out.println("[StoreBuffer] " + storeEntry.tag + " STORING " + storeEntry.storeValue + 
+                                 " to address " + addr);
+                markInstructionExecStart(storeEntry.tag, currentCycle);
+            }
+            
+            if (storeEntry.executing) {
+                storeEntry.remainingCycles--;
+                System.out.println("[StoreBuffer] " + storeEntry.tag + " executing... " + 
+                                 storeEntry.remainingCycles + " cycles remaining");
+                
+                if (storeEntry.remainingCycles <= 0) {
+                    System.out.println("[StoreBuffer] " + storeEntry. tag + " COMPLETED");
+                    markInstructionExecEnd(storeEntry.tag, currentCycle);
+                    markInstructionWriteBack(storeEntry. tag, currentCycle);
+                    completedStores.add(storeEntry);
+                }
+            }
+        }
+        
+        // Remove completed store entries
+        for (StoreBuffer.StoreEntry entry : completedStores) {
+            storeBuffer.removeEntry(entry);
+        }
+        
+        // Phase 4: Dispatch ready instructions to execution units
         for (ReservationStationEntry entry : rs.getStations()) {
-            dispatcher.addEntry(entry);
+            if (entry. isReady() && !entry.isExecuting()) {
+                dispatcher.addEntry(entry);
+                System.out.println("[Dispatch] Added " + entry.getId() + " to dispatcher queue");
+            }
         }
         dispatcher.dispatch();
         
-        // 3. Issue phase
+        // Mark execution start for newly dispatched instructions
+        for (ReservationStationEntry entry : rs. getStations()) {
+            if (entry.isExecuting()) {
+                markInstructionExecStart(entry.getId(), currentCycle);
+            }
+        }
+        
+        // Phase 5: Resolve branches
+        branchUnit.tryResolve();
+        if (branchUnit.hasResolvedBranch()) {
+            if (branchUnit.shouldFlushQueue()) {
+                int targetPc = branchUnit.getResolvedTargetPc();
+                System. out.println("[Branch] Taking branch to PC=" + targetPc);
+                issueUnit.jumpTo(targetPc);
+            }
+            branchUnit.clear();
+        }
+        
+        // Phase 6: Issue new instruction
+        // CHANGED: Check separate buffers for load/store
         int prevPc = issueUnit.getPc();
-        controller.stepOneCycle();
-        boolean issued = issueUnit.getPc() > prevPc;
-        lastIssuedIndex = issued ? prevPc : -1;
+        boolean issued = false;
+        
+        if (issueUnit.hasNext()) {
+            Instruction instr = program.get(issueUnit.getPc());
+            
+            boolean canIssue = false;
+            switch (instr.getType()) {
+                case ALU_FP:
+                case ALU_INT:
+                    canIssue = rs.hasFreeFor(instr);
+                    if (canIssue) {
+                        rs.accept(instr, null);
+                        System.out.println("[Issue] Issued to RS: " + instr.getOpcode());
+                    }
+                    break;
+                    
+                case LOAD:
+                    canIssue = loadBuffer.hasFree();
+                    if (canIssue) {
+                        loadBuffer.accept(instr);
+                        System. out.println("[Issue] Issued to Load Buffer: " + instr.getOpcode());
+                    }
+                    break;
+                    
+                case STORE:
+                    canIssue = storeBuffer.hasFree();
+                    if (canIssue) {
+                        storeBuffer.accept(instr);
+                        System.out.println("[Issue] Issued to Store Buffer: " + instr.getOpcode());
+                    }
+                    break;
+                    
+                case BRANCH:
+                    canIssue = branchUnit.isFree();
+                    if (canIssue) {
+                        branchUnit.accept(instr, null);
+                        System.out.println("[Issue] Issued to Branch Unit: " + instr. getOpcode());
+                    }
+                    break;
+            }
+            
+            if (canIssue) {
+                instr.setIssueCycle(currentCycle);
+                instructionStatuses.get(prevPc).issueCycle = currentCycle;
+                issueUnit.jumpTo(prevPc + 1);
+                issued = true;
+                lastIssuedIndex = prevPc;
+                System.out.println("[Issue] PC advanced from " + prevPc + " to " + issueUnit.getPc());
+            } else {
+                System.out. println("[Issue] STALLED - No free resources for " + instr.getOpcode());
+            }
+        }
+        
+        // Advance clock
+        SimulationClock. nextCycle();
+        
+        // Print status
+        printStatus();
         
         return issued;
+    }
+    
+    private void markInstructionExecStart(String tag, int cycle) {
+        for (int i = 0; i < instructionStatuses.size(); i++) {
+            InstructionStatus status = instructionStatuses.get(i);
+            if (status. tag != null && status.tag.equals(tag) && status.execStartCycle == -1) {
+                status.execStartCycle = cycle;
+                break;
+            }
+        }
+    }
+    
+    private void markInstructionExecEnd(String tag, int cycle) {
+        for (int i = 0; i < instructionStatuses. size(); i++) {
+            InstructionStatus status = instructionStatuses.get(i);
+            if (status.tag != null && status.tag.equals(tag) && status.execEndCycle == -1) {
+                status. execEndCycle = cycle;
+                break;
+            }
+        }
+    }
+    
+    private void markInstructionWriteBack(String tag, int cycle) {
+        for (int i = 0; i < instructionStatuses.size(); i++) {
+            InstructionStatus status = instructionStatuses.get(i);
+            if (status.tag != null && status.tag.equals(tag) && status.writeBackCycle == -1) {
+                status.writeBackCycle = cycle;
+                break;
+            }
+        }
+    }
+    
+    private void printStatus() {
+        System.out.println("\n--- Current State ---");
+        System.out.println("Reservation Stations: " + rs.getStations(). size());
+        for (ReservationStationEntry entry : rs.getStations()) {
+            System.out.println("  " + entry);
+        }
+        
+        // CHANGED: Print separate buffers
+        System.out. println("Load Buffer: " + loadBuffer.getBuffer().size());
+        for (LoadBuffer.LoadEntry entry : loadBuffer.getBuffer()) {
+            System.out.println("  " + entry);
+        }
+        
+        System.out.println("Store Buffer: " + storeBuffer.getBuffer().size());
+        for (StoreBuffer.StoreEntry entry : storeBuffer. getBuffer()) {
+            System. out.println("  " + entry);
+        }
+        
+        System.out.println("Cache Hits: " + cache.getHits() + ", Misses: " + cache. getMisses());
+        System. out.println("--------------------\n");
     }
 
     public void reset() {
@@ -149,30 +334,57 @@ public class SimulatorState {
         lastIssuedIndex = -1;
         if (issueUnit != null) issueUnit.jumpTo(0);
         if (cache != null) cache.clear();
-        initializeSimulator();
+        if (program != null) {
+            initializeSimulator();
+        }
     }
 
+    // CHANGED: Getters for separate buffers
     public int getCycle() { return SimulationClock.getCycle(); }
     public Program getProgram() { return program; }
     public int getLastIssuedIndex() { return lastIssuedIndex; }
+    public IssueUnit getIssueUnit() { return issueUnit; }
     public RegisterFile getRegFile() { return regFile; }
     public Cache getCache() { return cache; }
     public RealReservationStations getReservationStations() { return rs; }
-    public LoadStoreBuffer getLoadStoreBuffer() { return loadStoreBuffer; }
+    public LoadBuffer getLoadBuffer() { return loadBuffer; }           // CHANGED
+    public StoreBuffer getStoreBuffer() { return storeBuffer; }        // CHANGED
+    public List<InstructionStatus> getInstructionStatuses() { return instructionStatuses; }
     
-    public void setConfiguration(int fpAdd, int fpMul, int intAlu, int loadStore,
+    // CHANGED: Update configuration to accept separate sizes
+    public void setConfiguration(int fpAdd, int fpMul, int intAlu, 
+                                 int loadBufSize, int storeBufSize,
                                  int cacheSz, int blockSz, int hitLat, int missPen) {
         this.fpAddSize = fpAdd;
         this.fpMulSize = fpMul;
         this.intSize = intAlu;
-        this.loadStoreSize = loadStore;
-        this. cacheSize = cacheSz;
+        this.loadBufferSize = loadBufSize;
+        this.storeBufferSize = storeBufSize;
+        this.cacheSize = cacheSz;
         this.blockSize = blockSz;
-        this.cacheHitLatency = hitLat;
+        this. cacheHitLatency = hitLat;
         this.cacheMissPenalty = missPen;
     }
-
-	public IssueUnit getIssueUnit() {
-		return issueUnit;
-	}
+    
+    public void loadInitialRegisterValues(Map<String, Double> values) {
+        if (regFile != null) {
+            regFile.loadInitialValues(values);
+            System.out.println("[Init] Loaded initial register values: " + values);
+        }
+    }
+    
+    public void loadInitialMemoryValues(Map<Integer, Double> values) {
+        if (memory != null) {
+            memory.loadInitialData(values);
+            System.out.println("[Init] Loaded initial memory values: " + values);
+        }
+    }
+    
+    public static class InstructionStatus {
+        public String tag;
+        public int issueCycle = -1;
+        public int execStartCycle = -1;
+        public int execEndCycle = -1;
+        public int writeBackCycle = -1;
+    }
 }
