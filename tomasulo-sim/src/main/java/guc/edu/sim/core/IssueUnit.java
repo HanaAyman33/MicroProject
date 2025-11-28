@@ -2,7 +2,11 @@ package guc.edu.sim.core;
 
 /**
  * IssueUnit is responsible for issuing instructions from the program to the
- * Reservation Stations, Memory Unit, and Branch Unit.
+ * Reservation Stations, Memory Unit, and Branch Unit, following Tomasulo:
+ *
+ * - In-order ISSUE (PC increases only when issue succeeds).
+ * - Structural hazards checked through RS / Memory / Branch units.
+ * - Data hazards handled via tags (RegisterStatusTable + ReservationStations).
  */
 public class IssueUnit {
 
@@ -25,6 +29,12 @@ public class IssueUnit {
         this.pc = newPc;
     }
 
+    /**
+     * Try to issue the instruction at the current PC.
+     * If we cannot issue due to structural hazard (no free RS/LS/branch),
+     * we return false and DO NOT increment the PC.
+     * This enforces the rule: "once an instruction is stuck, we don't issue after it".
+     */
     public boolean stepIssue(ReservationStations rs,
                              MemoryUnitInterface mem,
                              BranchUnitInterface br,
@@ -43,6 +53,10 @@ public class IssueUnit {
         return true;
     }
 
+    /**
+     * Check only for structural hazards (no free RS / LS / branch slot).
+     * We do NOT block on WAW, since Tomasulo eliminates WAW using renaming.
+     */
     private boolean canIssue(Instruction instr,
                              ReservationStations rs,
                              MemoryUnitInterface mem,
@@ -65,40 +79,51 @@ public class IssueUnit {
                 return false;
         }
 
+        // If you want to add extra structural constraints via regStatus,
+        // keep them here. We currently assume no additional structural limits.
         if (regStatus != null) {
-            // Allow renaming: do not block on WAW at issue.
             if (regStatus.causesStructuralProblem(instr)) return false;
         }
 
         return true;
     }
-    
+
+    /**
+     * Route the instruction to its corresponding part of the Tomasulo architecture:
+     * - RS for ALU (FP/INT)
+     * - Memory Unit for loads/stores
+     * - Branch unit for branches
+     *
+     * We also inform the register-status table that the destination register
+     * will be produced by some in-flight instruction. The precise tag is typically
+     * set by the RS once it allocates an entry (via setProducerTag()).
+     */
     private void routeToUnit(Instruction instr,
-                         ReservationStations rs,
-                         MemoryUnitInterface mem,
-                         BranchUnitInterface br,
-                         RegisterStatusTable regStatus) {
+                             ReservationStations rs,
+                             MemoryUnitInterface mem,
+                             BranchUnitInterface br,
+                             RegisterStatusTable regStatus) {
 
-    if (regStatus instanceof SimpleRegisterStatusTable s) {
-        // RS implementation should set precise producer tag upon allocation.
-        s.markDestBusy(instr);
+        if (regStatus instanceof SimpleRegisterStatusTable s) {
+            // Mark that the destination register is going to be written.
+            // The exact producer tag will be set by the RS when it knows its ID.
+            s.markDestBusy(instr);
+        }
+
+        switch (instr.getType()) {
+            case ALU_FP:
+            case ALU_INT:
+                rs.accept(instr, regStatus);
+                break;
+            case LOAD:
+            case STORE:
+                mem.accept(instr, regStatus);
+                break;
+            case BRANCH:
+                br.accept(instr, regStatus);
+                break;
+            default:
+                break;
+        }
     }
-
-    switch (instr.getType()) {
-        case ALU_FP:
-        case ALU_INT:
-            rs.accept(instr, regStatus);
-            break;
-        case LOAD:
-        case STORE:
-            mem.accept(instr, regStatus);
-            break;
-        case BRANCH:
-            br.accept(instr, regStatus);
-            break;
-        default:
-            break;
-    }
-}
-
 }
