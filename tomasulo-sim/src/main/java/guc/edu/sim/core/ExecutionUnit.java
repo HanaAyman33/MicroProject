@@ -31,7 +31,7 @@ public class ExecutionUnit {
         if (entry == null) return false;
         if (!entry.isReady()) return false;
         current = entry;
-        int latency = latencyConfig.getLatency(unitType);
+        int latency = latencyConfig.getLatency(unitType, entry.getOpcode());
         remainingCycles = Math.max(1, latency);
         entry.markExecuting();
         return true;
