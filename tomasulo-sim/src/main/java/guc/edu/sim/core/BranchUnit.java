@@ -1,4 +1,4 @@
-package guc.edu. sim.core;
+package guc.edu.sim.core;
 
 /**
  * Branch unit for handling BEQ/BNE instructions without prediction.

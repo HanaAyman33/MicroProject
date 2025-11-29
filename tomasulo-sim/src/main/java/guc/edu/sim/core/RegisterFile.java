@@ -1,4 +1,4 @@
-package guc.edu.sim. core;
+package guc.edu.sim.core;
 
 import java.util. HashMap;
 import java.util. Map;

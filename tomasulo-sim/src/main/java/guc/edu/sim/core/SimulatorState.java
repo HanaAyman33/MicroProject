@@ -1,4 +1,4 @@
-package guc.edu.sim. core;
+package guc.edu.sim.core;
 
 import java.util.*;
 
@@ -19,6 +19,7 @@ public class SimulatorState {
     private Dispatcher dispatcher;
     private CommonDataBus cdb;
     private LatencyConfig latencyConfig;
+    private final List<PendingResult> pendingResults = new ArrayList<>();
     
     private int lastIssuedIndex = -1;
     private List<InstructionStatus> instructionStatuses = new ArrayList<>();
@@ -33,6 +34,14 @@ public class SimulatorState {
     private int blockSize = 16;
     private int cacheHitLatency = 1;
     private int cacheMissPenalty = 10;
+    private int fpAddLatency = 3;
+    private int fpMulLatency = 10;
+    private int intLatency = 1;
+    private int loadLatency = 2;
+    private int storeLatency = 2;
+    private int branchLatency = 1;
+    private Map<String, Double> initialRegValues = new HashMap<>();
+    private Map<Integer, Double> initialMemValues = new HashMap<>();
 
     public void loadProgramLines(List<String> lines) {
         ProgramLoader loader = new ProgramLoader();
@@ -45,6 +54,11 @@ public class SimulatorState {
         
         // Create components
         latencyConfig = new LatencyConfig();
+        latencyConfig.setLatency(StationType.FP_ADD, fpAddLatency);
+        latencyConfig.setLatency(StationType.FP_MUL, fpMulLatency);
+        latencyConfig.setLatency(StationType.INTEGER, intLatency);
+        latencyConfig.setLatency(StationType.LOAD, loadLatency);
+        latencyConfig.setLatency(StationType.STORE, storeLatency);
         regFile = new RegisterFile();
         memory = new Memory();
         cache = new Cache(cacheSize, blockSize, cacheHitLatency, cacheMissPenalty);
@@ -86,6 +100,17 @@ public class SimulatorState {
         for (int i = 0; i < program.size(); i++) {
             instructionStatuses.add(new InstructionStatus());
         }
+        pendingResults.clear();
+
+        // Reapply user-specified initial values if present
+        if (!initialRegValues.isEmpty()) {
+            regFile.loadInitialValues(initialRegValues);
+            System.out.println("[Init] Re-applied register values: " + initialRegValues);
+        }
+        if (!initialMemValues.isEmpty()) {
+            memory.loadInitialData(initialMemValues);
+            System.out.println("[Init] Re-applied memory values: " + initialMemValues);
+        }
         
         SimulationClock.reset();
         this.lastIssuedIndex = -1;
@@ -102,17 +127,33 @@ public class SimulatorState {
         
         int currentCycle = SimulationClock.getCycle() + 1;
         System.out.println("\n========== Cycle " + currentCycle + " ==========");
+
+        // Phase 0: Write-back any results that finished in the previous cycle
+        if (!pendingResults.isEmpty()) {
+            List<PendingResult> toBroadcast = new ArrayList<>(pendingResults);
+            pendingResults.clear();
+            for (PendingResult pr : toBroadcast) {
+                if (pr.broadcast) {
+                    cdb.broadcast(pr.tag, pr.result);
+                }
+                markInstructionWriteBack(pr.tag, currentCycle);
+            }
+        }
         
         // Phase 1: Write-back - broadcast results from completed execution units
         List<ReservationStationEntry> finishedRS = dispatcher.tickUnits();
         for (ReservationStationEntry entry : finishedRS) {
             System.out.println("[WriteBack] " + entry. getId() + " completed execution");
-            double result = (entry.getResult() instanceof Double) ? 
+            double result = (entry.getResult() instanceof Double) ?
                 (Double) entry.getResult() : 0.0;
-            cdb. broadcast(entry.getId(), result);
+
+            // Record exec end at the moment the unit finishes before write-back
+            markInstructionExecEnd(entry.getId(), currentCycle);
+
+            // Schedule the broadcast for the next cycle to avoid same-cycle write-back
+            pendingResults.add(new PendingResult(entry.getId(), result, true));
             rs.removeEntry(entry);
-            
-            markInstructionWriteBack(entry. getId(), currentCycle);
+
         }
         
         // Phase 2: Execute LOAD operations
@@ -124,7 +165,7 @@ public class SimulatorState {
                 
                 Cache.CacheAccessResult result = cache.access(addr, memory);
                 loadEntry.remainingCycles = result.latency;
-                loadEntry.result = memory.loadDouble(addr);
+                loadEntry.result = loadFromMemory(loadEntry.instruction, addr);
                 System.out.println("[LoadBuffer] " + loadEntry.tag + " LOADING from address " + addr + 
                                  " (latency=" + result.latency + " cycles)");
                 markInstructionExecStart(loadEntry.tag, currentCycle);
@@ -137,9 +178,8 @@ public class SimulatorState {
                 
                 if (loadEntry.remainingCycles <= 0) {
                     System.out.println("[LoadBuffer] " + loadEntry.tag + " COMPLETED with value " + loadEntry.result);
-                    cdb.broadcast(loadEntry.tag, loadEntry.result);
                     markInstructionExecEnd(loadEntry.tag, currentCycle);
-                    markInstructionWriteBack(loadEntry.tag, currentCycle);
+                    pendingResults.add(new PendingResult(loadEntry.tag, loadEntry.result, true));
                     completedLoads. add(loadEntry);
                 }
             }
@@ -157,8 +197,10 @@ public class SimulatorState {
                 storeEntry.executing = true;
                 int addr = storeEntry.computeAddress();
                 
-                storeEntry.remainingCycles = cacheHitLatency;
-                memory.storeDouble(addr, storeEntry.storeValue);
+                Cache.CacheAccessResult result = cache.access(addr, memory);
+                storeEntry.remainingCycles = result.latency;
+                storeToMemory(storeEntry.instruction, addr, storeEntry.storeValue);
+                cache.writeThrough(addr, memory);
                 System.out.println("[StoreBuffer] " + storeEntry.tag + " STORING " + storeEntry.storeValue + 
                                  " to address " + addr);
                 markInstructionExecStart(storeEntry.tag, currentCycle);
@@ -172,7 +214,7 @@ public class SimulatorState {
                 if (storeEntry.remainingCycles <= 0) {
                     System.out.println("[StoreBuffer] " + storeEntry. tag + " COMPLETED");
                     markInstructionExecEnd(storeEntry.tag, currentCycle);
-                    markInstructionWriteBack(storeEntry. tag, currentCycle);
+                    pendingResults.add(new PendingResult(storeEntry.tag, storeEntry.storeValue, false));
                     completedStores.add(storeEntry);
                 }
             }
@@ -343,6 +385,37 @@ public class SimulatorState {
         System.out.println("--------------------\n");
     }
 
+    private double loadFromMemory(Instruction instr, int address) {
+        String op = instr.getOpcode().toUpperCase();
+        switch (op) {
+            case "LW":
+                return memory.loadWord(address);
+            case "L.S":
+                return memory.loadFloat(address);
+            case "LD":
+            case "L.D":
+            default:
+                return memory.loadDouble(address);
+        }
+    }
+
+    private void storeToMemory(Instruction instr, int address, double value) {
+        String op = instr.getOpcode().toUpperCase();
+        switch (op) {
+            case "SW":
+                memory.storeWord(address, (int) value);
+                break;
+            case "S.S":
+                memory.storeFloat(address, (float) value);
+                break;
+            case "SD":
+            case "S.D":
+            default:
+                memory.storeDouble(address, value);
+                break;
+        }
+    }
+
     public void reset() {
         SimulationClock.reset();
         lastIssuedIndex = -1;
@@ -376,19 +449,52 @@ public class SimulatorState {
         this. blockSize = blockSz;
         this. cacheHitLatency = hitLat;
         this.cacheMissPenalty = missPen;
+
+        // Rebuild the simulator with the new configuration if a program is loaded
+        if (program != null) {
+            initializeSimulator();
+        }
+    }
+
+    public void setConfigurationWithLatencies(int fpAdd, int fpMul, int intAlu,
+                                              int loadBufSize, int storeBufSize,
+                                              int cacheSz, int blockSz, int hitLat, int missPen,
+                                              int fpAddLat, int fpMulLat, int intLat,
+                                              int loadLat, int storeLat, int branchLat) {
+        this.fpAddSize = fpAdd;
+        this.fpMulSize = fpMul;
+        this.intSize = intAlu;
+        this.loadBufferSize = loadBufSize;
+        this.storeBufferSize = storeBufSize;
+        this.cacheSize = cacheSz;
+        this.blockSize = blockSz;
+        this.cacheHitLatency = hitLat;
+        this.cacheMissPenalty = missPen;
+        this.fpAddLatency = fpAddLat;
+        this.fpMulLatency = fpMulLat;
+        this.intLatency = intLat;
+        this.loadLatency = loadLat;
+        this.storeLatency = storeLat;
+        this.branchLatency = branchLat;
+
+        if (program != null) {
+            initializeSimulator();
+        }
     }
     
     public void loadInitialRegisterValues(Map<String, Double> values) {
+        initialRegValues = new HashMap<>(values);
         if (regFile != null) {
-            regFile.loadInitialValues(values);
-            System.out.println("[Init] Loaded initial register values: " + values);
+            regFile.loadInitialValues(initialRegValues);
+            System.out.println("[Init] Loaded initial register values: " + initialRegValues);
         }
     }
     
     public void loadInitialMemoryValues(Map<Integer, Double> values) {
+        initialMemValues = new HashMap<>(values);
         if (memory != null) {
-            memory.loadInitialData(values);
-            System.out.println("[Init] Loaded initial memory values: " + values);
+            memory.loadInitialData(initialMemValues);
+            System.out.println("[Init] Loaded initial memory values: " + initialMemValues);
         }
     }
     
@@ -398,5 +504,17 @@ public class SimulatorState {
         public int execStartCycle = -1;
         public int execEndCycle = -1;
         public int writeBackCycle = -1;
+    }
+
+    private static class PendingResult {
+        final String tag;
+        final double result;
+        final boolean broadcast;
+
+        PendingResult(String tag, double result, boolean broadcast) {
+            this.tag = tag;
+            this.result = result;
+            this.broadcast = broadcast;
+        }
     }
 }

@@ -93,17 +93,31 @@ public class ProgramLoader {
 
     private InstructionType classify(String op) {
         String opcode = op.toUpperCase();
-        if (opcode.equals("L.D") || opcode.equals("LW") || opcode.equals("L.S"))
+
+        // Loads
+        if (opcode.equals("LW") || opcode.equals("LD") ||
+            opcode.equals("L.D") || opcode.equals("L.S")) {
             return InstructionType.LOAD;
-        if (opcode.equals("S.D") || opcode.equals("SW"))
+        }
+
+        // Stores
+        if (opcode.equals("SW") || opcode.equals("SD") ||
+            opcode.equals("S.D") || opcode.equals("S.S")) {
             return InstructionType.STORE;
-        if (opcode.equals("BEQ") || opcode.equals("BNE"))
+        }
+
+        // Branches
+        if (opcode.equals("BEQ") || opcode.equals("BNE")) {
             return InstructionType.BRANCH;
+        }
+
+        // ALU operations (integer or floating)
         if (opcode.contains("ADD") || opcode.contains("SUB") ||
             opcode.contains("MUL") || opcode.contains("DIV")) {
-            if (opcode.endsWith(".D")) return InstructionType.ALU_FP;
-            return InstructionType.ALU_INT;
+            boolean isFloat = opcode.contains(".D") || opcode.contains(".S");
+            return isFloat ? InstructionType.ALU_FP : InstructionType.ALU_INT;
         }
+
         return InstructionType.UNKNOWN;
     }
 }

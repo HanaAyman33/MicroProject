@@ -7,3 +7,7 @@ Thumbs.db
 
 # Maven build output (this project's target folder)
 target/
+
+# Java build output
+bin/
+*.class

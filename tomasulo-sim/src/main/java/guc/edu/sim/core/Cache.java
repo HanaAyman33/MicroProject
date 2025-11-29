@@ -1,4 +1,4 @@
-package guc. edu.sim.core;
+package guc.edu.sim.core;
 
 import java.util. HashMap;
 import java.util. Map;
@@ -58,6 +58,22 @@ public class Cache {
             
             return new CacheAccessResult(false, hitLatency + missPenalty, block);
         }
+    }
+
+    /**
+     * Simple write-through behavior: after memory is updated, refresh the cached block
+     * so subsequent hits observe the new value.
+     */
+    public void writeThrough(int address, Memory memory) {
+        int blockAddress = (address / blockSize) * blockSize;
+        int index = (address / blockSize) % numBlocks;
+        int tag = address / cacheSize;
+
+        CacheLine line = lines[index];
+        byte[] block = memory.loadBlock(blockAddress, blockSize);
+        line.setValid(true);
+        line.setTag(tag);
+        line.setData(block);
     }
 
     public int getHits() { return hits; }

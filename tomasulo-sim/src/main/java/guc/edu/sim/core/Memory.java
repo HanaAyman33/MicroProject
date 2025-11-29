@@ -1,4 +1,4 @@
-package guc. edu.sim.core;
+package guc.edu.sim.core;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -36,6 +36,16 @@ public class Memory {
         int b2 = memory.getOrDefault(address + 2, (byte) 0) & 0xFF;
         int b3 = memory. getOrDefault(address + 3, (byte) 0) & 0xFF;
         return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+    }
+
+    public void storeFloat(int address, float value) {
+        storeWord(address, Float.floatToRawIntBits(value));
+        System.out.println("[Memory] Stored float at address " + address + ": " + value);
+    }
+
+    public float loadFloat(int address) {
+        int bits = loadWord(address);
+        return Float.intBitsToFloat(bits);
     }
 
     public void storeDouble(int address, double value) {

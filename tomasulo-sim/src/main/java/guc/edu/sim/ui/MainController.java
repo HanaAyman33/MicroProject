@@ -482,9 +482,19 @@ public class MainController {
         int blockSz = getIntValue(blockSizeField, 16);
         int hitLat = getIntValue(cacheHitLatencyField, 1);
         int missPen = getIntValue(cacheMissPenaltyField, 10);
+        int fpAddLat = getIntValue(addLatencyField, 3);
+        int fpMulLat = getIntValue(mulLatencyField, 10);
+        int intLat = getIntValue(intAddLatencyField, 1);
+        int loadLat = getIntValue(loadLatencyField, 2);
+        int storeLat = getIntValue(storeLatencyField, 2);
+        int branchLat = getIntValue(branchLatencyField, 1);
         
-        sim.setConfiguration(fpAdd, fpMul, 2, loadBufSize, storeBufSize, 
-                           cacheSz, blockSz, hitLat, missPen);
+        sim.setConfigurationWithLatencies(fpAdd, fpMul, 2, loadBufSize, storeBufSize,
+                cacheSz, blockSz, hitLat, missPen,
+                fpAddLat, fpMulLat, intLat, loadLat, storeLat, branchLat);
+        setConfigFieldTexts(fpAdd, fpMul, loadBufSize, storeBufSize,
+                cacheSz, blockSz, hitLat, missPen,
+                fpAddLat, fpMulLat, intLat, loadLat, storeLat, branchLat);
         
         // Load initial values from text areas if they exist
         parseAndLoadRegisterValues();
@@ -553,12 +563,31 @@ public class MainController {
                 int blockSz = getIntValue(blockSizeField, 16);
                 int hitLat = getIntValue(cacheHitLatencyField, 1);
                 int missPen = getIntValue(cacheMissPenaltyField, 10);
+                int fpAddLat = getIntValue(addLatencyField, 3);
+                int fpMulLat = getIntValue(mulLatencyField, 10);
+                int intLat = getIntValue(intAddLatencyField, 1);
+                int loadLat = getIntValue(loadLatencyField, 2);
+                int storeLat = getIntValue(storeLatencyField, 2);
+                int branchLat = getIntValue(branchLatencyField, 1);
                 
-                sim.setConfiguration(fpAdd, fpMul, 2, loadBufSize, storeBufSize, 
-                                   cacheSz, blockSz, hitLat, missPen);
+                sim.setConfigurationWithLatencies(fpAdd, fpMul, 2, loadBufSize, storeBufSize,
+                        cacheSz, blockSz, hitLat, missPen,
+                        fpAddLat, fpMulLat, intLat, loadLat, storeLat, branchLat);
+                setConfigFieldTexts(fpAdd, fpMul, loadBufSize, storeBufSize,
+                        cacheSz, blockSz, hitLat, missPen,
+                        fpAddLat, fpMulLat, intLat, loadLat, storeLat, branchLat);
                 
                 parseAndLoadRegisterValues();
                 parseAndLoadMemoryValues();
+
+                // Re-render UI after the simulator is rebuilt
+                renderProgram(sim.getProgram());
+                cycle = sim.getCycle();
+                updateReservationStations();
+                updateLoadStoreBuffers();
+                updateRegisters();
+                updateCacheView();
+                refreshAllLabels();
                 
                 log("✓ Configuration applied successfully");
                 updateStatusBar("Configuration updated");
@@ -1006,6 +1035,33 @@ public class MainController {
     private void updateStatusBar(String message) {
         if (statusBarLabel != null) {
             statusBarLabel.setText(message);
+        }
+    }
+
+    private void setConfigFieldTexts(int fpAdd, int fpMul, int loadBuf, int storeBuf,
+                                     int cacheSz, int blockSz, int hitLat, int missPen,
+                                     int fpAddLat, int fpMulLat, int intLat,
+                                     int loadLat, int storeLat, int branchLat) {
+        setField(addSubSizeField, fpAdd);
+        setField(mulDivSizeField, fpMul);
+        setField(loadBufferSizeField, loadBuf);
+        setField(storeBufferSizeField, storeBuf);
+        setField(cacheSizeField, cacheSz);
+        setField(blockSizeField, blockSz);
+        setField(cacheHitLatencyField, hitLat);
+        setField(cacheMissPenaltyField, missPen);
+        setField(addLatencyField, fpAddLat);
+        setField(mulLatencyField, fpMulLat);
+        setField(divLatencyField, fpMulLat);
+        setField(intAddLatencyField, intLat);
+        setField(loadLatencyField, loadLat);
+        setField(storeLatencyField, storeLat);
+        setField(branchLatencyField, branchLat);
+    }
+
+    private void setField(TextField field, int value) {
+        if (field != null) {
+            field.setText(Integer.toString(value));
         }
     }
 

@@ -1,4 +1,4 @@
-package guc.edu. sim.core;
+package guc.edu.sim.core;
 
 import java. util. ArrayList;
 import java.util.List;
@@ -77,12 +77,14 @@ public class RealReservationStations implements ReservationStations {
     }
 
     private StationType getStationType(Instruction instr) {
-        String op = instr.getOpcode(). toUpperCase();
-        if (op.contains("ADD") || op.contains("SUB")) {
-            return op.endsWith(". D") ? StationType.FP_ADD : StationType.INTEGER;
-        }
+        String op = instr.getOpcode().toUpperCase();
+        boolean isFloat = op.contains(".D") || op.contains(".S");
+
         if (op.contains("MUL") || op.contains("DIV")) {
-            return op.endsWith(".D") ? StationType.FP_MUL : StationType.INTEGER;
+            return isFloat ? StationType.FP_MUL : StationType.INTEGER;
+        }
+        if (op.contains("ADD") || op.contains("SUB")) {
+            return isFloat ? StationType.FP_ADD : StationType.INTEGER;
         }
         return StationType.INTEGER;
     }

@@ -56,10 +56,8 @@ public class ExecutionUnit {
     }
 
     private Object computeResult(ReservationStationEntry entry) {
-        // Minimal placeholder: users should integrate actual opcode execution logic.
-        // Example behavior for integer ops or FP ops should be implemented where your instruction
-        // representation and register/memory modules are available.
-        // For now, return a string describing the result.
-        return String.format("RESULT_of_%s", entry.getId());
+        double vj = entry.getVj() instanceof Number ? ((Number) entry.getVj()).doubleValue() : 0.0;
+        double vk = entry.getVk() instanceof Number ? ((Number) entry.getVk()).doubleValue() : 0.0;
+        return ALU.compute(entry.getOpcode(), vj, vk);
     }
 }
