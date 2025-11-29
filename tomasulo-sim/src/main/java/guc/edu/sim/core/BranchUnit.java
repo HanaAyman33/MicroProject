@@ -14,6 +14,8 @@ public class BranchUnit implements BranchUnitInterface {
     private int targetPc = -1;
     private boolean resolved = false;
     private boolean shouldBranch = false;
+    private int latency = 1;
+    private int remainingCycles = 0;
 
     public BranchUnit(RegisterFile regFile, Program program) {
         this.regFile = regFile;
@@ -30,6 +32,7 @@ public class BranchUnit implements BranchUnitInterface {
         busy = true;
         currentBranch = instr;
         resolved = false;
+        remainingCycles = latency;
         
         // Read operands
         String s1 = instr.getSrc1();
@@ -61,7 +64,11 @@ public class BranchUnit implements BranchUnitInterface {
     }
 
     public void tryResolve() {
-        if (! busy || resolved || ! src1Ready || !src2Ready) return;
+        if (!busy || resolved || !src1Ready || !src2Ready) return;
+        if (remainingCycles > 0) {
+            remainingCycles--;
+            return;
+        }
         
         boolean condition = false;
         String opcode = currentBranch.getOpcode(). toUpperCase();
@@ -99,6 +106,9 @@ public class BranchUnit implements BranchUnitInterface {
         busy = false;
         resolved = false;
         currentBranch = null;
+        shouldBranch = false;
+        targetPc = -1;
+        remainingCycles = 0;
     }
 
     @Override
@@ -114,5 +124,9 @@ public class BranchUnit implements BranchUnitInterface {
     @Override
     public boolean shouldFlushQueue() {
         return shouldBranch;
+    }
+
+    public void setLatency(int latency) {
+        this.latency = Math.max(1, latency);
     }
 }

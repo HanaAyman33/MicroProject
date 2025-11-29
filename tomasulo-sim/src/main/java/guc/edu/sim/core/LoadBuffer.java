@@ -10,9 +10,12 @@ public class LoadBuffer {
     private final List<LoadEntry> buffer = new ArrayList<>();
     private final int maxSize;
     private final RegisterFile regFile;
+    @SuppressWarnings("unused")
     private final Memory memory;
+    @SuppressWarnings("unused")
     private final Cache cache;
     private int nextId = 1;
+    private String lastAllocatedTag;
 
     public LoadBuffer(int maxSize, RegisterFile regFile, Memory memory, Cache cache) {
         this.maxSize = maxSize;
@@ -46,8 +49,9 @@ public class LoadBuffer {
             regFile.setProducer(instr.getDest(), tag);
         }
 
-        buffer. add(entry);
-        System. out.println("[LoadBuffer] Allocated " + tag + " for " + instr.getOpcode());
+        buffer.add(entry);
+        lastAllocatedTag = tag;
+        System.out.println("[LoadBuffer] Allocated " + tag + " for " + instr.getOpcode());
     }
 
     public List<LoadEntry> getBuffer() {
@@ -97,5 +101,9 @@ public class LoadBuffer {
             return tag + " " + instruction.getOpcode() + " baseReady=" + baseReady + 
                    " executing=" + executing + " remaining=" + remainingCycles;
         }
+    }
+
+    public String getLastAllocatedTag() {
+        return lastAllocatedTag;
     }
 }

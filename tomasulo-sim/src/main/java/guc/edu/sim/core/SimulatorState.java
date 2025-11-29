@@ -40,8 +40,21 @@ public class SimulatorState {
     private int loadLatency = 2;
     private int storeLatency = 2;
     private int branchLatency = 1;
+    private int rawHazards;
+    private int warHazards;
+    private int wawHazards;
+    private int structuralHazards;
+    private int loadIssued;
+    private int storeIssued;
+    private int fpIssued;
+    private int intIssued;
+    private int branchIssued;
     private Map<String, Double> initialRegValues = new HashMap<>();
     private Map<Integer, Double> initialMemValues = new HashMap<>();
+    private final List<IssuedInstructionInfo> inFlight = new ArrayList<>();
+    private final Map<String, IssuedInstructionInfo> tagToInstruction = new HashMap<>();
+    private int branchTagCounter = 0;
+    private String activeBranchTag;
 
     public void loadProgramLines(List<String> lines) {
         ProgramLoader loader = new ProgramLoader();
@@ -70,6 +83,7 @@ public class SimulatorState {
         storeBuffer = new StoreBuffer(storeBufferSize, regFile, memory, cache);
         
         branchUnit = new BranchUnit(regFile, program);
+        branchUnit.setLatency(branchLatency);
         
         dispatcher = new Dispatcher(latencyConfig);
         dispatcher.addExecutionUnit(StationType.FP_ADD, 2);
@@ -101,6 +115,12 @@ public class SimulatorState {
             instructionStatuses.add(new InstructionStatus());
         }
         pendingResults.clear();
+        inFlight.clear();
+        tagToInstruction.clear();
+        rawHazards = warHazards = wawHazards = structuralHazards = 0;
+        loadIssued = storeIssued = fpIssued = intIssued = branchIssued = 0;
+        branchTagCounter = 0;
+        activeBranchTag = null;
 
         // Reapply user-specified initial values if present
         if (!initialRegValues.isEmpty()) {
@@ -136,41 +156,36 @@ public class SimulatorState {
                 if (pr.broadcast) {
                     cdb.broadcast(pr.tag, pr.result);
                 }
-                markInstructionWriteBack(pr.tag, currentCycle);
+                // Results that were produced in the previous simulator step are
+                // considered to write back in the cycle immediately after their
+                // last execution cycle. Since we are at currentCycle, that
+                // write-back cycle is (currentCycle - 1).
+                markInstructionWriteBack(pr.tag, currentCycle - 1);
             }
         }
         
-        // Phase 1: Write-back - broadcast results from completed execution units
+        // Phase 1: Collect completed execution-unit results
         List<ReservationStationEntry> finishedRS = dispatcher.tickUnits();
         for (ReservationStationEntry entry : finishedRS) {
             System.out.println("[WriteBack] " + entry. getId() + " completed execution");
             double result = (entry.getResult() instanceof Double) ?
                 (Double) entry.getResult() : 0.0;
 
-            // Record exec end at the moment the unit finishes before write-back
-            markInstructionExecEnd(entry.getId(), currentCycle);
+            // Record exec end as the *last cycle of execution*.
+            // The unit finishes at the beginning of currentCycle, so the last
+            // active execution cycle is (currentCycle - 1).
+            markInstructionExecEnd(entry.getId(), currentCycle - 1);
 
-            // Schedule the broadcast for the next cycle to avoid same-cycle write-back
+            // Defer broadcast/write-back to the next simulator step so that
+            // dependent instructions only see the value starting in the
+            // *next* cycle. The reservation-station slot will be freed when
+            // the result is broadcast (see RealReservationStations).
             pendingResults.add(new PendingResult(entry.getId(), result, true));
-            rs.removeEntry(entry);
-
         }
         
         // Phase 2: Execute LOAD operations
         List<LoadBuffer.LoadEntry> completedLoads = new ArrayList<>();
         for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
-            if (loadEntry.isReady() && !loadEntry.executing) {
-                loadEntry.executing = true;
-                int addr = loadEntry.computeAddress();
-                
-                Cache.CacheAccessResult result = cache.access(addr, memory);
-                loadEntry.remainingCycles = result.latency;
-                loadEntry.result = loadFromMemory(loadEntry.instruction, addr);
-                System.out.println("[LoadBuffer] " + loadEntry.tag + " LOADING from address " + addr + 
-                                 " (latency=" + result.latency + " cycles)");
-                markInstructionExecStart(loadEntry.tag, currentCycle);
-            }
-            
             if (loadEntry.executing) {
                 loadEntry.remainingCycles--;
                 System.out.println("[LoadBuffer] " + loadEntry.tag + " executing...  " + 
@@ -178,10 +193,29 @@ public class SimulatorState {
                 
                 if (loadEntry.remainingCycles <= 0) {
                     System.out.println("[LoadBuffer] " + loadEntry.tag + " COMPLETED with value " + loadEntry.result);
-                    markInstructionExecEnd(loadEntry.tag, currentCycle);
+                    // Load completes at the beginning of this cycle, so its last
+                    // execution cycle is (currentCycle - 1).
+                    markInstructionExecEnd(loadEntry.tag, currentCycle - 1);
+
+                    // Defer broadcast/write-back to the next simulator step so
+                    // that dependents observe the result one cycle later.
                     pendingResults.add(new PendingResult(loadEntry.tag, loadEntry.result, true));
-                    completedLoads. add(loadEntry);
+                    completedLoads.add(loadEntry);
                 }
+            } else if (loadEntry.isReady()) {
+                // Start executing this load in the *next* cycle after it becomes ready.
+                // We set remainingCycles to the cache/memory latency but do not tick it
+                // down in the same simulator step, so an N-cycle load occupies cycles
+                // [execStart, execStart + N - 1].
+                loadEntry.executing = true;
+                int addr = loadEntry.computeAddress();
+
+                Cache.CacheAccessResult result = cache.access(addr, memory);
+                loadEntry.remainingCycles = result.latency;
+                loadEntry.result = loadFromMemory(loadEntry.instruction, addr);
+                System.out.println("[LoadBuffer] " + loadEntry.tag + " LOADING from address " + addr +
+                                 " (latency=" + result.latency + " cycles)");
+                markInstructionExecStart(loadEntry.tag, currentCycle);
             }
         }
         
@@ -193,19 +227,6 @@ public class SimulatorState {
         // Phase 3: Execute STORE operations
         List<StoreBuffer.StoreEntry> completedStores = new ArrayList<>();
         for (StoreBuffer. StoreEntry storeEntry : storeBuffer.getBuffer()) {
-            if (storeEntry.isReady() && !storeEntry.executing) {
-                storeEntry.executing = true;
-                int addr = storeEntry.computeAddress();
-                
-                Cache.CacheAccessResult result = cache.access(addr, memory);
-                storeEntry.remainingCycles = result.latency;
-                storeToMemory(storeEntry.instruction, addr, storeEntry.storeValue);
-                cache.writeThrough(addr, memory);
-                System.out.println("[StoreBuffer] " + storeEntry.tag + " STORING " + storeEntry.storeValue + 
-                                 " to address " + addr);
-                markInstructionExecStart(storeEntry.tag, currentCycle);
-            }
-            
             if (storeEntry.executing) {
                 storeEntry.remainingCycles--;
                 System.out.println("[StoreBuffer] " + storeEntry.tag + " executing... " + 
@@ -213,10 +234,28 @@ public class SimulatorState {
                 
                 if (storeEntry.remainingCycles <= 0) {
                     System.out.println("[StoreBuffer] " + storeEntry. tag + " COMPLETED");
-                    markInstructionExecEnd(storeEntry.tag, currentCycle);
+                    // Store completes at the beginning of this cycle, so its last
+                    // execution cycle is (currentCycle - 1).
+                    markInstructionExecEnd(storeEntry.tag, currentCycle - 1);
+
+                    // Stores don't broadcast on the CDB, but we still record their
+                    // write-back via the pendingResults queue in the *next* step.
                     pendingResults.add(new PendingResult(storeEntry.tag, storeEntry.storeValue, false));
                     completedStores.add(storeEntry);
                 }
+            } else if (storeEntry.isReady()) {
+                // Start executing this store; like loads, we only begin counting
+                // latency from the *next* cycle after execStart.
+                storeEntry.executing = true;
+                int addr = storeEntry.computeAddress();
+
+                Cache.CacheAccessResult result = cache.access(addr, memory);
+                storeEntry.remainingCycles = result.latency;
+                storeToMemory(storeEntry.instruction, addr, storeEntry.storeValue);
+                cache.writeThrough(addr, memory);
+                System.out.println("[StoreBuffer] " + storeEntry.tag + " STORING " + storeEntry.storeValue +
+                                 " to address " + addr);
+                markInstructionExecStart(storeEntry.tag, currentCycle);
             }
         }
         
@@ -244,6 +283,13 @@ public class SimulatorState {
         // Phase 5: Resolve branches
         branchUnit.tryResolve();
         if (branchUnit.hasResolvedBranch()) {
+            if (activeBranchTag != null) {
+                // Branch resolves at the beginning of this cycle, so its last
+                // execution cycle is (currentCycle - 1).
+                markInstructionExecEnd(activeBranchTag, currentCycle - 1);
+                markInstructionWriteBack(activeBranchTag, currentCycle);
+                activeBranchTag = null;
+            }
             if (branchUnit.shouldFlushQueue()) {
                 int targetPc = branchUnit.getResolvedTargetPc();
                 System.out. println("[Branch] Taking branch to PC=" + targetPc);
@@ -256,6 +302,7 @@ public class SimulatorState {
         int prevPc = issueUnit.getPc();
         boolean issued = false;
         String assignedTag = null;
+        HazardSnapshot hazardSnapshot = null;
         
         if (issueUnit.hasNext()) {
             Instruction instr = program.get(issueUnit.getPc());
@@ -266,49 +313,55 @@ public class SimulatorState {
                 case ALU_INT:
                     canIssue = rs.hasFreeFor(instr);
                     if (canIssue) {
-                        int sizeBefore = rs.getStations().size();
+                        hazardSnapshot = detectHazards(instr);
                         rs.accept(instr, null);
-                        // Get the newly added entry's tag
-                        if (rs.getStations().size() > sizeBefore) {
-                            assignedTag = rs. getStations().get(rs. getStations().size() - 1).getId();
-                        }
+                        assignedTag = rs.getLastAllocatedTag();
                         System.out.println("[Issue] Issued to RS: " + instr.getOpcode() + " -> " + assignedTag);
+                    } else {
+                        structuralHazards++;
                     }
                     break;
                     
                 case LOAD:
                     canIssue = loadBuffer.hasFree();
                     if (canIssue) {
-                        int sizeBefore = loadBuffer.getBuffer().size();
+                        hazardSnapshot = detectHazards(instr);
                         loadBuffer.accept(instr);
-                        // Get the newly added entry's tag
-                        if (loadBuffer.getBuffer().size() > sizeBefore) {
-                            assignedTag = loadBuffer. getBuffer().get(loadBuffer. getBuffer().size() - 1).tag;
-                        }
+                        assignedTag = loadBuffer.getLastAllocatedTag();
                         System.out.println("[Issue] Issued to Load Buffer: " + instr.getOpcode() + " -> " + assignedTag);
+                    } else {
+                        structuralHazards++;
                     }
                     break;
                     
                 case STORE:
                     canIssue = storeBuffer.hasFree();
                     if (canIssue) {
-                        int sizeBefore = storeBuffer.getBuffer(). size();
+                        hazardSnapshot = detectHazards(instr);
                         storeBuffer.accept(instr);
-                        // Get the newly added entry's tag
-                        if (storeBuffer.getBuffer().size() > sizeBefore) {
-                            assignedTag = storeBuffer. getBuffer().get(storeBuffer.getBuffer().size() - 1).tag;
-                        }
+                        assignedTag = storeBuffer.getLastAllocatedTag();
                         System.out.println("[Issue] Issued to Store Buffer: " + instr.getOpcode() + " -> " + assignedTag);
+                    } else {
+                        structuralHazards++;
                     }
                     break;
                     
                 case BRANCH:
                     canIssue = branchUnit.isFree();
                     if (canIssue) {
+                        hazardSnapshot = detectHazards(instr);
                         branchUnit.accept(instr, null);
-                        assignedTag = "BRANCH";
-                        System.out. println("[Issue] Issued to Branch Unit: " + instr.getOpcode());
+                        assignedTag = "BR" + (++branchTagCounter);
+                        activeBranchTag = assignedTag;
+                        markInstructionExecStart(assignedTag, currentCycle);
+                        System.out.println("[Issue] Issued to Branch Unit: " + instr.getOpcode());
+                    } else {
+                        structuralHazards++;
                     }
+                    break;
+                case UNKNOWN:
+                default:
+                    System.out.println("[Issue] Unsupported instruction type: " + instr.getOpcode());
                     break;
             }
             
@@ -317,6 +370,13 @@ public class SimulatorState {
                 instructionStatuses.get(prevPc).issueCycle = currentCycle;
                 instructionStatuses.get(prevPc).tag = assignedTag;  // FIXED: Store the tag
                 issueUnit.jumpTo(prevPc + 1);
+                recordInstructionMix(instr);
+                if (hazardSnapshot != null) {
+                    if (hazardSnapshot.raw) rawHazards++;
+                    if (hazardSnapshot.war) warHazards++;
+                    if (hazardSnapshot.waw) wawHazards++;
+                }
+                trackIssuedInstruction(instr, assignedTag);
                 issued = true;
                 lastIssuedIndex = prevPc;
                 System.out.println("[Issue] PC advanced from " + prevPc + " to " + issueUnit.getPc());
@@ -362,6 +422,7 @@ public class SimulatorState {
                 break;
             }
         }
+        completeIssuedInstruction(tag);
     }
     
     private void printStatus() {
@@ -436,6 +497,11 @@ public class SimulatorState {
     public LoadBuffer getLoadBuffer() { return loadBuffer; }
     public StoreBuffer getStoreBuffer() { return storeBuffer; }
     public List<InstructionStatus> getInstructionStatuses() { return instructionStatuses; }
+    public int getFpAddSize() { return fpAddSize; }
+    public int getFpMulSize() { return fpMulSize; }
+    public int getIntSize() { return intSize; }
+    public int getLoadBufferSize() { return loadBufferSize; }
+    public int getStoreBufferSize() { return storeBufferSize; }
     
     public void setConfiguration(int fpAdd, int fpMul, int intAlu, 
                                  int loadBufSize, int storeBufSize,
@@ -495,6 +561,158 @@ public class SimulatorState {
         if (memory != null) {
             memory.loadInitialData(initialMemValues);
             System.out.println("[Init] Loaded initial memory values: " + initialMemValues);
+        }
+    }
+
+    public int getRawHazards() { return rawHazards; }
+    public int getWarHazards() { return warHazards; }
+    public int getWawHazards() { return wawHazards; }
+    public int getStructuralHazards() { return structuralHazards; }
+    public int getLoadIssuedCount() { return loadIssued; }
+    public int getStoreIssuedCount() { return storeIssued; }
+    public int getFpIssuedCount() { return fpIssued; }
+    public int getIntIssuedCount() { return intIssued; }
+    public int getBranchIssuedCount() { return branchIssued; }
+
+    private void recordInstructionMix(Instruction instr) {
+        switch (instr.getType()) {
+            case LOAD:
+                loadIssued++;
+                break;
+            case STORE:
+                storeIssued++;
+                break;
+            case ALU_FP:
+                fpIssued++;
+                break;
+            case ALU_INT:
+                intIssued++;
+                break;
+            case BRANCH:
+                branchIssued++;
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void trackIssuedInstruction(Instruction instr, String tag) {
+        List<String> sources = extractSourceRegisters(instr);
+        String dest = extractDestinationRegister(instr);
+        IssuedInstructionInfo info = new IssuedInstructionInfo(tag, dest, sources);
+        inFlight.add(info);
+        if (tag != null) {
+            tagToInstruction.put(tag, info);
+        }
+    }
+
+    private void completeIssuedInstruction(String tag) {
+        if (tag == null) return;
+        IssuedInstructionInfo info = tagToInstruction.remove(tag);
+        if (info != null) {
+            info.completed = true;
+            inFlight.remove(info);
+        }
+    }
+
+    private HazardSnapshot detectHazards(Instruction instr) {
+        List<String> sources = extractSourceRegisters(instr);
+        String dest = extractDestinationRegister(instr);
+        boolean raw = false;
+        boolean war = false;
+        boolean waw = false;
+
+        for (IssuedInstructionInfo info : inFlight) {
+            if (info.completed) continue;
+            if (!raw && info.dest != null) {
+                for (String src : sources) {
+                    if (src != null && src.equals(info.dest)) {
+                        raw = true;
+                        break;
+                    }
+                }
+            }
+            if (!war && dest != null) {
+                for (String src : info.sources) {
+                    if (dest.equals(src)) {
+                        war = true;
+                        break;
+                    }
+                }
+            }
+            if (!waw && dest != null && dest.equals(info.dest)) {
+                waw = true;
+            }
+        }
+        return new HazardSnapshot(raw, war, waw);
+    }
+
+    private List<String> extractSourceRegisters(Instruction instr) {
+        List<String> sources = new ArrayList<>();
+        if (instr == null) return sources;
+        switch (instr.getType()) {
+            case LOAD:
+                if (isRegister(instr.getBase())) sources.add(instr.getBase());
+                break;
+            case STORE:
+                if (isRegister(instr.getSrc1())) sources.add(instr.getSrc1());
+                if (isRegister(instr.getBase())) sources.add(instr.getBase());
+                break;
+            case ALU_FP:
+            case ALU_INT:
+                if (isRegister(instr.getSrc1())) sources.add(instr.getSrc1());
+                if (isRegister(instr.getSrc2())) sources.add(instr.getSrc2());
+                break;
+            case BRANCH:
+                if (isRegister(instr.getSrc1())) sources.add(instr.getSrc1());
+                if (isRegister(instr.getSrc2())) sources.add(instr.getSrc2());
+                break;
+            default:
+                break;
+        }
+        return sources;
+    }
+
+    private String extractDestinationRegister(Instruction instr) {
+        if (instr == null) return null;
+        switch (instr.getType()) {
+            case LOAD:
+            case ALU_FP:
+            case ALU_INT:
+                return instr.getDest();
+            default:
+                return null;
+        }
+    }
+
+    private boolean isRegister(String operand) {
+        if (operand == null) return false;
+        return !operand.matches("-?\\d+");
+    }
+
+    private static class IssuedInstructionInfo {
+        @SuppressWarnings("unused")
+        final String tag;
+        final String dest;
+        final List<String> sources;
+        boolean completed = false;
+
+        IssuedInstructionInfo(String tag, String dest, List<String> sources) {
+            this.tag = tag;
+            this.dest = dest;
+            this.sources = sources;
+        }
+    }
+
+    private static class HazardSnapshot {
+        final boolean raw;
+        final boolean war;
+        final boolean waw;
+
+        HazardSnapshot(boolean raw, boolean war, boolean waw) {
+            this.raw = raw;
+            this.war = war;
+            this.waw = waw;
         }
     }
     

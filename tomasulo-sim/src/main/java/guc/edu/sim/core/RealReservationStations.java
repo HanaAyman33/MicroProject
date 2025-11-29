@@ -12,8 +12,11 @@ public class RealReservationStations implements ReservationStations {
     private final int fpMulSize;
     private final int intSize;
     private final RegisterFile regFile;
+    private String lastAllocatedTag;
 
-    private int nextId = 1;
+    private int nextFpAddId = 1;
+    private int nextFpMulId = 1;
+    private int nextIntId = 1;
 
     public RealReservationStations(int fpAddSize, int fpMulSize, int intSize, RegisterFile regFile) {
         this.fpAddSize = fpAddSize;
@@ -34,7 +37,19 @@ public class RealReservationStations implements ReservationStations {
     @Override
     public void accept(Instruction instr, RegisterStatusTable regStatus) {
         StationType type = getStationType(instr);
-        String tag = "RS" + nextId++;
+        String tag;
+        switch (type) {
+            case FP_ADD:
+                tag = "A" + nextFpAddId++;
+                break;
+            case FP_MUL:
+                tag = "M" + nextFpMulId++;
+                break;
+            case INTEGER:
+            default:
+                tag = "I" + nextIntId++;
+                break;
+        }
         
         ReservationStationEntry entry = new ReservationStationEntry(
             tag, type, instr. getOpcode(), instr.getDest()
@@ -73,6 +88,7 @@ public class RealReservationStations implements ReservationStations {
         }
 
         stations.add(entry);
+        lastAllocatedTag = tag;
         System.out.println("[RS] Allocated " + tag + " for " + instr. getOpcode() + " -> " + entry);
     }
 
@@ -107,13 +123,29 @@ public class RealReservationStations implements ReservationStations {
     }
 
     public void broadcastResult(String tag, double result) {
+        ReservationStationEntry selfToRemove = null;
         for (ReservationStationEntry entry : stations) {
-            if (tag.equals(entry.getQj())) {
-                entry. setVj(result);
+            // When the producing instruction's own result is broadcast, we
+            // free its reservation-station slot *after* write-back. This
+            // models structural hazards correctly: new instructions cannot
+            // reuse this station until the value has been written back.
+            if (tag.equals(entry.getId())) {
+                selfToRemove = entry;
+                continue;
             }
-            if (tag.equals(entry. getQk())) {
+            if (tag.equals(entry.getQj())) {
+                entry.setVj(result);
+            }
+            if (tag.equals(entry.getQk())) {
                 entry.setVk(result);
             }
         }
+        if (selfToRemove != null) {
+            stations.remove(selfToRemove);
+        }
+    }
+
+    public String getLastAllocatedTag() {
+        return lastAllocatedTag;
     }
 }

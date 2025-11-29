@@ -1,20 +1,20 @@
-package guc.edu. sim.ui;
+package guc.edu.sim.ui;
 
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
-import javafx. scene.control.cell.PropertyValueFactory;
+import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.VBox;
 import javafx.application.Platform;
-import javafx. stage.FileChooser;
+import javafx.stage.FileChooser;
 import java.io.File;
 import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import guc.edu.sim. core.*;
+import guc.edu.sim.core.*;
 
 public class MainController {
 
@@ -38,6 +38,7 @@ public class MainController {
     // RS tab
     @FXML private TableView<ReservationStationView> addSubRsTable;
     @FXML private TableView<ReservationStationView> mulDivRsTable;
+    @FXML private TableView<ReservationStationView> intRsTable;
 
     @FXML private TableColumn<ReservationStationView, String> colRsName1;
     @FXML private TableColumn<ReservationStationView, String> colRsOp1;
@@ -54,6 +55,14 @@ public class MainController {
     @FXML private TableColumn<ReservationStationView, String> colRsQj2;
     @FXML private TableColumn<ReservationStationView, String> colRsQk2;
     @FXML private TableColumn<ReservationStationView, Boolean> colRsBusy2;
+
+    @FXML private TableColumn<ReservationStationView, String> colIntRsName;
+    @FXML private TableColumn<ReservationStationView, String> colIntRsOp;
+    @FXML private TableColumn<ReservationStationView, String> colIntRsVj;
+    @FXML private TableColumn<ReservationStationView, String> colIntRsVk;
+    @FXML private TableColumn<ReservationStationView, String> colIntRsQj;
+    @FXML private TableColumn<ReservationStationView, String> colIntRsQk;
+    @FXML private TableColumn<ReservationStationView, Boolean> colIntRsBusy;
 
     // CHANGED: Separate tables for Load and Store buffers
     @FXML private TableView<LoadStoreView> loadBufferTable;
@@ -73,6 +82,7 @@ public class MainController {
 
     @FXML private Label addSubBusyLabel;
     @FXML private Label mulDivBusyLabel;
+    @FXML private Label intBusyLabel;
     @FXML private Label loadBufferBusyLabel;
     @FXML private Label storeBufferBusyLabel;
 
@@ -114,6 +124,7 @@ public class MainController {
 
     @FXML private TextField addSubSizeField;
     @FXML private TextField mulDivSizeField;
+    @FXML private TextField intRsSizeField;
     @FXML private TextField loadBufferSizeField;   // CHANGED
     @FXML private TextField storeBufferSizeField;  // CHANGED
 
@@ -139,6 +150,7 @@ public class MainController {
     @FXML private Label aluCountLabel;
     @FXML private Label branchCountLabel;
 
+
     // Menu items
     @FXML private CheckMenuItem showLogMenuItem;
     @FXML private CheckMenuItem showStatsMenuItem;
@@ -150,6 +162,7 @@ public class MainController {
     private final ObservableList<InstructionRowView> instructions = FXCollections.observableArrayList();
     private final ObservableList<ReservationStationView> addSubStations = FXCollections.observableArrayList();
     private final ObservableList<ReservationStationView> mulDivStations = FXCollections.observableArrayList();
+    private final ObservableList<ReservationStationView> integerStations = FXCollections.observableArrayList();
     private final ObservableList<LoadStoreView> loadBuffers = FXCollections.observableArrayList();
     private final ObservableList<LoadStoreView> storeBuffers = FXCollections.observableArrayList();
     private final ObservableList<RegisterView> intRegisters = FXCollections.observableArrayList();
@@ -181,7 +194,7 @@ public class MainController {
         colInstrIndex.setCellValueFactory(new PropertyValueFactory<>("index"));
         colInstrPC.setCellValueFactory(new PropertyValueFactory<>("pc"));
         colInstrText.setCellValueFactory(new PropertyValueFactory<>("instruction"));
-        colIssue. setCellValueFactory(new PropertyValueFactory<>("issue"));
+        colIssue.setCellValueFactory(new PropertyValueFactory<>("issue"));
         colExecStart.setCellValueFactory(new PropertyValueFactory<>("execStart"));
         colExecEnd.setCellValueFactory(new PropertyValueFactory<>("execEnd"));
         colWriteBack.setCellValueFactory(new PropertyValueFactory<>("writeBack"));
@@ -195,7 +208,7 @@ public class MainController {
         colRsVj1.setCellValueFactory(new PropertyValueFactory<>("vj"));
         colRsVk1.setCellValueFactory(new PropertyValueFactory<>("vk"));
         colRsQj1.setCellValueFactory(new PropertyValueFactory<>("qj"));
-        colRsQk1. setCellValueFactory(new PropertyValueFactory<>("qk"));
+        colRsQk1.setCellValueFactory(new PropertyValueFactory<>("qk"));
         colRsBusy1.setCellValueFactory(new PropertyValueFactory<>("busy"));
         addSubRsTable.setItems(addSubStations);
 
@@ -203,20 +216,31 @@ public class MainController {
         colRsName2.setCellValueFactory(new PropertyValueFactory<>("name"));
         colRsOp2.setCellValueFactory(new PropertyValueFactory<>("op"));
         colRsVj2.setCellValueFactory(new PropertyValueFactory<>("vj"));
-        colRsVk2. setCellValueFactory(new PropertyValueFactory<>("vk"));
+        colRsVk2.setCellValueFactory(new PropertyValueFactory<>("vk"));
         colRsQj2.setCellValueFactory(new PropertyValueFactory<>("qj"));
         colRsQk2.setCellValueFactory(new PropertyValueFactory<>("qk"));
         colRsBusy2.setCellValueFactory(new PropertyValueFactory<>("busy"));
         mulDivRsTable.setItems(mulDivStations);
+
+        if (intRsTable != null) {
+            colIntRsName.setCellValueFactory(new PropertyValueFactory<>("name"));
+            colIntRsOp.setCellValueFactory(new PropertyValueFactory<>("op"));
+            colIntRsVj.setCellValueFactory(new PropertyValueFactory<>("vj"));
+            colIntRsVk.setCellValueFactory(new PropertyValueFactory<>("vk"));
+            colIntRsQj.setCellValueFactory(new PropertyValueFactory<>("qj"));
+            colIntRsQk.setCellValueFactory(new PropertyValueFactory<>("qk"));
+            colIntRsBusy.setCellValueFactory(new PropertyValueFactory<>("busy"));
+            intRsTable.setItems(integerStations);
+        }
     }
 
     // CHANGED: Setup separate Load and Store buffer tables
     private void setupLoadStoreBufferTables() {
         // Load Buffer Table
         if (colLoadName != null) colLoadName.setCellValueFactory(new PropertyValueFactory<>("name"));
-        if (colLoadOp != null) colLoadOp. setCellValueFactory(new PropertyValueFactory<>("op"));
+        if (colLoadOp != null) colLoadOp.setCellValueFactory(new PropertyValueFactory<>("op"));
         if (colLoadAddress != null) colLoadAddress.setCellValueFactory(new PropertyValueFactory<>("address"));
-        if (colLoadDest != null) colLoadDest. setCellValueFactory(new PropertyValueFactory<>("destSrc"));
+        if (colLoadDest != null) colLoadDest.setCellValueFactory(new PropertyValueFactory<>("destSrc"));
         if (colLoadBusy != null) colLoadBusy.setCellValueFactory(new PropertyValueFactory<>("busy"));
         if (loadBufferTable != null) loadBufferTable.setItems(loadBuffers);
         
@@ -231,7 +255,7 @@ public class MainController {
 
     private void setupRegisterTables() {
         colIntRegName.setCellValueFactory(new PropertyValueFactory<>("name"));
-        colIntRegValue. setCellValueFactory(new PropertyValueFactory<>("value"));
+        colIntRegValue.setCellValueFactory(new PropertyValueFactory<>("value"));
         colIntRegTag.setCellValueFactory(new PropertyValueFactory<>("tag"));
         intRegTable.setItems(intRegisters);
 
@@ -243,9 +267,9 @@ public class MainController {
 
     private void setupCacheTable() {
         colCacheIndex.setCellValueFactory(new PropertyValueFactory<>("index"));
-        colCacheValid. setCellValueFactory(new PropertyValueFactory<>("valid"));
+        colCacheValid.setCellValueFactory(new PropertyValueFactory<>("valid"));
         colCacheTag.setCellValueFactory(new PropertyValueFactory<>("tag"));
-        colCacheData. setCellValueFactory(new PropertyValueFactory<>("data"));
+        colCacheData.setCellValueFactory(new PropertyValueFactory<>("data"));
         cacheTable.setItems(cacheLines);
     }
 
@@ -270,9 +294,9 @@ public class MainController {
         switch (instr.getType()) {
             case LOAD:
                 return String.format("%s %s, %d(%s)", op, nullSafe(instr.getDest()),
-                        instr.getOffset() == null ? 0 : instr. getOffset(), nullSafe(instr.getBase()));
+                        instr.getOffset() == null ? 0 : instr.getOffset(), nullSafe(instr.getBase()));
             case STORE:
-                return String.format("%s %s, %d(%s)", op, nullSafe(instr. getSrc1()),
+                return String.format("%s %s, %d(%s)", op, nullSafe(instr.getSrc1()),
                         instr.getOffset() == null ? 0 : instr.getOffset(), nullSafe(instr.getBase()));
             case BRANCH:
                 return String.format("%s %s, %s, %s", op, nullSafe(instr.getSrc1()),
@@ -281,9 +305,9 @@ public class MainController {
             case ALU_INT:
                 if (instr.getSrc2() != null) {
                     return String.format("%s %s, %s, %s", op, nullSafe(instr.getDest()),
-                            nullSafe(instr.getSrc1()), nullSafe(instr. getSrc2()));
+                            nullSafe(instr.getSrc1()), nullSafe(instr.getSrc2()));
                 } else {
-                    return String. format("%s %s, %s", op, nullSafe(instr.getDest()),
+                    return String.format("%s %s, %s", op, nullSafe(instr.getDest()),
                             nullSafe(instr.getSrc1()));
                 }
             default:
@@ -313,7 +337,7 @@ public class MainController {
         
         // Run simulation in background thread
         new Thread(() -> {
-            while (isRunning && sim. getIssueUnit().hasNext()) {
+            while (isRunning && sim.getIssueUnit().hasNext()) {
                 try {
                     Thread.sleep(500); // 500ms delay between cycles
                     Platform.runLater(() -> {
@@ -351,7 +375,7 @@ public class MainController {
     @FXML
     private void onStep() {
         if (sim == null || !sim.isProgramLoaded()) {
-            log("⚠ No program loaded.  Use File > Open Program.. .");
+            log("⚠ No program loaded.Use File > Open Program.. .");
             return;
         }
         stepSimulation();
@@ -380,7 +404,7 @@ public class MainController {
             System.out.println("[UI] Updating Instruction Table...");
             updateInstructionTable();
             
-            System. out.println("[UI] Refreshing labels...");
+            System.out.println("[UI] Refreshing labels...");
             refreshAllLabels();
             
             if (issued) {
@@ -409,8 +433,9 @@ public class MainController {
         isRunning = false;
         if (sim != null) sim.reset();
         instructions.clear();
-        addSubStations. clear();
+        addSubStations.clear();
         mulDivStations.clear();
+        integerStations.clear();
         loadBuffers.clear();          // CHANGED
         storeBuffers.clear();         // CHANGED
         intRegisters.clear();
@@ -434,12 +459,12 @@ public class MainController {
     private void onOpenProgram() {
         FileChooser fileChooser = new FileChooser();
         fileChooser.setTitle("Open Program File");
-        fileChooser. getExtensionFilters().addAll(
+        fileChooser.getExtensionFilters().addAll(
                 new FileChooser.ExtensionFilter("Assembly Files", "*.asm", "*.s"),
-                new FileChooser. ExtensionFilter("Text Files", "*.txt"),
-                new FileChooser. ExtensionFilter("All Files", "*.*")
+                new FileChooser.ExtensionFilter("Text Files", "*.txt"),
+                new FileChooser.ExtensionFilter("All Files", "*.*")
         );
-        File file = fileChooser.showOpenDialog(logArea. getScene().getWindow());
+        File file = fileChooser.showOpenDialog(logArea.getScene().getWindow());
         if (file != null) {
             try {
                 List<String> lines = Files.readAllLines(file.toPath());
@@ -462,7 +487,7 @@ public class MainController {
                 log("📂 Loaded program: " + file.getName());
                 updateStatusBar("Loaded: " + file.getName());
             } catch (Exception ex) {
-                log("❌ Failed to load program: " + ex. getMessage());
+                log("❌ Failed to load program: " + ex.getMessage());
                 ex.printStackTrace();
                 updateStatusBar("Load failed");
             }
@@ -476,6 +501,7 @@ public class MainController {
         // Get values from UI if available, otherwise use defaults
         int fpAdd = getIntValue(addSubSizeField, 3);
         int fpMul = getIntValue(mulDivSizeField, 2);
+        int intRs = getIntValue(intRsSizeField, 2);
         int loadBufSize = getIntValue(loadBufferSizeField, 3);
         int storeBufSize = getIntValue(storeBufferSizeField, 3);
         int cacheSz = getIntValue(cacheSizeField, 64);
@@ -483,16 +509,17 @@ public class MainController {
         int hitLat = getIntValue(cacheHitLatencyField, 1);
         int missPen = getIntValue(cacheMissPenaltyField, 10);
         int fpAddLat = getIntValue(addLatencyField, 3);
-        int fpMulLat = getIntValue(mulLatencyField, 10);
+        int fpMulLat = Math.max(getIntValue(mulLatencyField, 10),
+                getIntValue(divLatencyField, 40));
         int intLat = getIntValue(intAddLatencyField, 1);
         int loadLat = getIntValue(loadLatencyField, 2);
         int storeLat = getIntValue(storeLatencyField, 2);
         int branchLat = getIntValue(branchLatencyField, 1);
         
-        sim.setConfigurationWithLatencies(fpAdd, fpMul, 2, loadBufSize, storeBufSize,
-                cacheSz, blockSz, hitLat, missPen,
+        sim.setConfigurationWithLatencies(fpAdd, fpMul, intRs, loadBufSize, storeBufSize, 
+                cacheSz, blockSz, hitLat, missPen, 
                 fpAddLat, fpMulLat, intLat, loadLat, storeLat, branchLat);
-        setConfigFieldTexts(fpAdd, fpMul, loadBufSize, storeBufSize,
+        setConfigFieldTexts(fpAdd, fpMul, intRs, loadBufSize, storeBufSize,
                 cacheSz, blockSz, hitLat, missPen,
                 fpAddLat, fpMulLat, intLat, loadLat, storeLat, branchLat);
         
@@ -557,6 +584,7 @@ public class MainController {
                 // Use defaults if fields are null or empty
                 int fpAdd = getIntValue(addSubSizeField, 3);
                 int fpMul = getIntValue(mulDivSizeField, 2);
+                int intRs = getIntValue(intRsSizeField, 2);
                 int loadBufSize = getIntValue(loadBufferSizeField, 3);
                 int storeBufSize = getIntValue(storeBufferSizeField, 3);
                 int cacheSz = getIntValue(cacheSizeField, 64);
@@ -564,16 +592,17 @@ public class MainController {
                 int hitLat = getIntValue(cacheHitLatencyField, 1);
                 int missPen = getIntValue(cacheMissPenaltyField, 10);
                 int fpAddLat = getIntValue(addLatencyField, 3);
-                int fpMulLat = getIntValue(mulLatencyField, 10);
+                int fpMulLat = Math.max(getIntValue(mulLatencyField, 10),
+                        getIntValue(divLatencyField, 40));
                 int intLat = getIntValue(intAddLatencyField, 1);
                 int loadLat = getIntValue(loadLatencyField, 2);
                 int storeLat = getIntValue(storeLatencyField, 2);
                 int branchLat = getIntValue(branchLatencyField, 1);
                 
-                sim.setConfigurationWithLatencies(fpAdd, fpMul, 2, loadBufSize, storeBufSize,
-                        cacheSz, blockSz, hitLat, missPen,
-                        fpAddLat, fpMulLat, intLat, loadLat, storeLat, branchLat);
-                setConfigFieldTexts(fpAdd, fpMul, loadBufSize, storeBufSize,
+                sim.setConfigurationWithLatencies(fpAdd, fpMul, intRs, loadBufSize, storeBufSize,
+                         cacheSz, blockSz, hitLat, missPen,
+                         fpAddLat, fpMulLat, intLat, loadLat, storeLat, branchLat);
+                setConfigFieldTexts(fpAdd, fpMul, intRs, loadBufSize, storeBufSize,
                         cacheSz, blockSz, hitLat, missPen,
                         fpAddLat, fpMulLat, intLat, loadLat, storeLat, branchLat);
                 
@@ -619,15 +648,18 @@ public class MainController {
     private void onResetConfig() {
         // Reset to default values
         addLatencyField.setText("2");
-        mulLatencyField. setText("10");
-        divLatencyField. setText("40");
+        mulLatencyField.setText("10");
+        divLatencyField.setText("40");
         intAddLatencyField.setText("1");
         loadLatencyField.setText("2");
-        storeLatencyField. setText("2");
+        storeLatencyField.setText("2");
         branchLatencyField.setText("1");
         
         addSubSizeField.setText("3");
-        mulDivSizeField. setText("2");
+        mulDivSizeField.setText("2");
+        if (intRsSizeField != null) {
+            intRsSizeField.setText("2");
+        }
         loadBufferSizeField.setText("3");      // CHANGED
         storeBufferSizeField.setText("3");     // CHANGED
         
@@ -656,7 +688,7 @@ public class MainController {
             reg.tagProperty().set("");
         }
         for (RegisterView reg : fpRegisters) {
-            reg.valueProperty().set("0. 0");
+            reg.valueProperty().set("0.0");
             reg.tagProperty().set("");
         }
         log("⟲ Registers reset to zero");
@@ -676,7 +708,7 @@ public class MainController {
     private void onAbout() {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("About Tomasulo Simulator");
-        alert. setHeaderText("Tomasulo Algorithm Simulator");
+        alert.setHeaderText("Tomasulo Algorithm Simulator");
         alert.setContentText("A dynamic scheduling simulator implementing the Tomasulo algorithm.\n\n" +
                 "Developed for CSEN 702: Microprocessors\n" +
                 "Winter 2025\n\n" +
@@ -694,12 +726,12 @@ public class MainController {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         alert.setTitle("User Guide");
         alert.setHeaderText("How to Use the Simulator");
-        alert.setContentText("1. Load a program using File > Open or load a test case\n" +
-                "2. Configure latencies and station sizes in the Configuration tab\n" +
-                "3. Use Run, Pause, or Step buttons to execute\n" +
-                "4.  Monitor execution in the Program Execution tab\n" +
-                "5. View reservation stations, registers, and cache in respective tabs\n" +
-                "6. Check Statistics tab for performance metrics");
+        alert.setContentText("1.Load a program using File > Open or load a test case\n" +
+                "2.Configure latencies and station sizes in the Configuration tab\n" +
+                "3.Use Run, Pause, or Step buttons to execute\n" +
+                "4.Monitor execution in the Program Execution tab\n" +
+                "5.View reservation stations, registers, and cache in respective tabs\n" +
+                "6.Check Statistics tab for performance metrics");
         alert.showAndWait();
     }
 
@@ -715,7 +747,7 @@ public class MainController {
         if (registerInitArea == null || sim == null) return;
         
         String text = registerInitArea.getText(). trim();
-        if (text. isEmpty()) return;
+        if (text.isEmpty()) return;
         
         Map<String, Double> regValues = new HashMap<>();
         String[] lines = text.split("\n");
@@ -725,12 +757,12 @@ public class MainController {
             if (line.isEmpty() || line.startsWith("#")) continue;
             
             // Format: R2=100 or F4=3.5
-            String[] parts = line. split("=");
+            String[] parts = line.split("=");
             if (parts.length == 2) {
                 String reg = parts[0].trim();
                 try {
                     double value = Double.parseDouble(parts[1]. trim());
-                    regValues. put(reg, value);
+                    regValues.put(reg, value);
                     log("📝 Setting " + reg + " = " + value);
                 } catch (NumberFormatException e) {
                     log("⚠ Invalid value for " + reg + ": " + parts[1]);
@@ -755,13 +787,13 @@ public class MainController {
             line = line.trim();
             if (line.isEmpty() || line.startsWith("#")) continue;
             
-            // Format: 100=45. 5 (address=value)
+            // Format: 100=45.5 (address=value)
             String[] parts = line.split("=");
             if (parts.length == 2) {
                 try {
                     int address = Integer.parseInt(parts[0].trim());
                     double value = Double.parseDouble(parts[1]. trim());
-                    memValues. put(address, value);
+                    memValues.put(address, value);
                     log("📝 Setting Memory[" + address + "] = " + value);
                 } catch (NumberFormatException e) {
                     log("⚠ Invalid memory entry: " + line);
@@ -769,14 +801,15 @@ public class MainController {
             }
         }
         
-        sim. loadInitialMemoryValues(memValues);
+        sim.loadInitialMemoryValues(memValues);
     }
 
     private void updateReservationStations() {
         addSubStations.clear();
         mulDivStations.clear();
+        integerStations.clear();
         
-        if (sim. getReservationStations() != null) {
+        if (sim.getReservationStations() != null) {
             for (ReservationStationEntry entry : sim.getReservationStations(). getStations()) {
                 String vjStr = (entry.getVj() != null) ? String.valueOf(entry.getVj()) : "-";
                 String vkStr = (entry.getVk() != null) ? String.valueOf(entry.getVk()) : "-";
@@ -797,6 +830,8 @@ public class MainController {
                     addSubStations.add(view);
                 } else if (entry.getType() == StationType.FP_MUL) {
                     mulDivStations.add(view);
+                } else if (entry.getType() == StationType.INTEGER) {
+                    integerStations.add(view);
                 }
             }
         }
@@ -809,14 +844,14 @@ public class MainController {
         
         // Update Load Buffer
         if (sim.getLoadBuffer() != null) {
-            for (LoadBuffer. LoadEntry entry : sim.getLoadBuffer(). getBuffer()) {
+            for (LoadBuffer.LoadEntry entry : sim.getLoadBuffer(). getBuffer()) {
                 String address = entry.baseReady ? 
                     String.valueOf(entry.computeAddress()) : 
                     "Waiting";
                 
                 LoadStoreView view = new LoadStoreView(
                     entry.tag,
-                    entry.instruction. getOpcode(),
+                    entry.instruction.getOpcode(),
                     address,
                     entry.instruction.getDest() != null ? entry.instruction.getDest() : "-",
                     true
@@ -848,7 +883,7 @@ public class MainController {
         intRegisters.clear();
         fpRegisters.clear();
         
-        if (sim. getRegFile() != null) {
+        if (sim.getRegFile() != null) {
             RegisterFile rf = sim.getRegFile();
             
             // Integer registers
@@ -870,13 +905,13 @@ public class MainController {
                 String producer = rf.getProducer(reg);
                 String producerStr = (producer != null) ? producer : "";
                 
-                fpRegisters. add(new RegisterView(reg, valueStr, producerStr));
+                fpRegisters.add(new RegisterView(reg, valueStr, producerStr));
             }
         }
     }
 
     private void updateCacheView() {
-        cacheLines. clear();
+        cacheLines.clear();
         
         if (sim.getCache() != null) {
             Cache cache = sim.getCache();
@@ -900,7 +935,7 @@ public class MainController {
         }
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < Math.min(8, bytes.length); i++) {
-            sb.append(String. format("%02X ", bytes[i]));
+            sb.append(String.format("%02X ", bytes[i]));
         }
         return sb.toString(). trim();
     }
@@ -915,7 +950,7 @@ public class MainController {
             InstructionRowView view = instructions.get(i);
             
             if (status.issueCycle > 0) {
-                view. issueProperty().set(String.valueOf(status.issueCycle));
+                view.issueProperty().set(String.valueOf(status.issueCycle));
             }
             if (status.execStartCycle > 0) {
                 view.execStartProperty().set(String.valueOf(status.execStartCycle));
@@ -924,7 +959,7 @@ public class MainController {
                 view.execEndProperty().set(String.valueOf(status.execEndCycle));
             }
             if (status.writeBackCycle > 0) {
-                view.writeBackProperty(). set(String.valueOf(status. writeBackCycle));
+                view.writeBackProperty(). set(String.valueOf(status.writeBackCycle));
             }
         }
     }
@@ -955,27 +990,34 @@ public class MainController {
 
     // CHANGED: Include separate labels for Load and Store buffers
     private void refreshRsLabels() {
-        if (addSubBusyLabel != null) {
-            long busy = addSubStations.stream(). filter(ReservationStationView::isBusy).count();
-            addSubBusyLabel.setText(busy + " / " + addSubStations.size() + " Busy");
-        }
-        if (mulDivBusyLabel != null) {
-            long busy = mulDivStations.stream(). filter(ReservationStationView::isBusy).count();
-            mulDivBusyLabel.setText(busy + " / " + mulDivStations. size() + " Busy");
-        }
-        if (loadBufferBusyLabel != null) {
-            long busy = loadBuffers.stream().filter(LoadStoreView::isBusy).count();
-            loadBufferBusyLabel.setText(busy + " / " + loadBuffers.size() + " Busy");
-        }
-        if (storeBufferBusyLabel != null) {
-            long busy = storeBuffers.stream().filter(LoadStoreView::isBusy).count();
-            storeBufferBusyLabel.setText(busy + " / " + storeBuffers.size() + " Busy");
+        if (sim != null) {
+            long busyAdd = addSubStations.stream().filter(ReservationStationView::isBusy).count();
+            long busyMul = mulDivStations.stream().filter(ReservationStationView::isBusy).count();
+            long busyInt = integerStations.stream().filter(ReservationStationView::isBusy).count();
+            long busyLoad = loadBuffers.stream().filter(LoadStoreView::isBusy).count();
+            long busyStore = storeBuffers.stream().filter(LoadStoreView::isBusy).count();
+
+            if (addSubBusyLabel != null) {
+                addSubBusyLabel.setText(busyAdd + " / " + sim.getFpAddSize() + " Busy");
+            }
+            if (mulDivBusyLabel != null) {
+                mulDivBusyLabel.setText(busyMul + " / " + sim.getFpMulSize() + " Busy");
+            }
+            if (intBusyLabel != null) {
+                intBusyLabel.setText(busyInt + " / " + sim.getIntSize() + " Busy");
+            }
+            if (loadBufferBusyLabel != null) {
+                loadBufferBusyLabel.setText(busyLoad + " / " + sim.getLoadBufferSize() + " Busy");
+            }
+            if (storeBufferBusyLabel != null) {
+                storeBufferBusyLabel.setText(busyStore + " / " + sim.getStoreBufferSize() + " Busy");
+            }
         }
     }
 
     private void refreshCacheStats() {
         if (cacheHitsLabel != null) {
-            cacheHitsLabel.setText(String. valueOf(cacheHits));
+            cacheHitsLabel.setText(String.valueOf(cacheHits));
         }
         if (cacheMissesLabel != null) {
             cacheMissesLabel.setText(String.valueOf(cacheMisses));
@@ -983,7 +1025,7 @@ public class MainController {
         if (hitRateLabel != null) {
             int total = cacheHits + cacheMisses;
             double rate = total > 0 ? (100.0 * cacheHits / total) : 0.0;
-            hitRateLabel. setText(String.format("%.1f%%", rate));  // FIXED: %. 1f not %.  1f
+            hitRateLabel.setText(String.format("%.1f%%", rate));  // FIXED: %. 1f not %.  1f
         }
     }
 
@@ -1014,6 +1056,34 @@ public class MainController {
                 cpiLabel.setText(String.format("%.2f", cpi));  // FIXED: %.2f not %. 2f
             }
         }
+
+        if (sim != null) {
+            int raw = sim.getRawHazards();
+            setLabelText(rawHazardsLabel, String.valueOf(raw));
+
+            int war = sim.getWarHazards();
+            setLabelText(warHazardsLabel, String.valueOf(war));
+
+            int waw = sim.getWawHazards();
+            setLabelText(wawHazardsLabel, String.valueOf(waw));
+
+            int structural = sim.getStructuralHazards();
+            setLabelText(structuralHazardsLabel, String.valueOf(structural));
+
+            int loads = sim.getLoadIssuedCount();
+            setLabelText(loadCountLabel, String.valueOf(loads));
+
+            int stores = sim.getStoreIssuedCount();
+            setLabelText(storeCountLabel, String.valueOf(stores));
+
+            int fpOps = sim.getFpIssuedCount();
+            int intOps = sim.getIntIssuedCount();
+            int totalAlu = fpOps + intOps;
+            setLabelText(aluCountLabel, String.valueOf(totalAlu));
+
+            int branches = sim.getBranchIssuedCount();
+            setLabelText(branchCountLabel, String.valueOf(branches));
+        }
     }
 
     private void refreshConfigLabels() {
@@ -1038,12 +1108,14 @@ public class MainController {
         }
     }
 
-    private void setConfigFieldTexts(int fpAdd, int fpMul, int loadBuf, int storeBuf,
+    private void setConfigFieldTexts(int fpAdd, int fpMul, int intStations,
+                                     int loadBuf, int storeBuf,
                                      int cacheSz, int blockSz, int hitLat, int missPen,
                                      int fpAddLat, int fpMulLat, int intLat,
                                      int loadLat, int storeLat, int branchLat) {
         setField(addSubSizeField, fpAdd);
         setField(mulDivSizeField, fpMul);
+        setField(intRsSizeField, intStations);
         setField(loadBufferSizeField, loadBuf);
         setField(storeBufferSizeField, storeBuf);
         setField(cacheSizeField, cacheSz);
@@ -1065,11 +1137,17 @@ public class MainController {
         }
     }
 
+    private void setLabelText(Label label, String value) {
+        if (label != null) {
+            label.setText(value);
+        }
+    }
+
     private void log(String message) {
         if (logArea == null) return;
         Platform.runLater(() -> {
             String timestamp = String.format("[Cycle %d] ", cycle);
-            if (logArea. getText().isEmpty()) {
+            if (logArea.getText().isEmpty()) {
                 logArea.setText(timestamp + message);
             } else {
                 logArea.appendText("\n" + timestamp + message);

@@ -127,6 +127,7 @@
                                 <!-- Test case buttons removed; use File > Open Program... -->
                             </HBox>
                             
+
                             <TableView fx:id="instructionTable" VBox.vgrow="ALWAYS"
                                        style="-fx-background-color: white; -fx-background-radius: 6;">
                                 <columnResizePolicy>
@@ -171,30 +172,60 @@
                             <Insets top="15" right="15" bottom="15" left="15"/>
                         </padding>
                         
-                        <!-- Add/Sub Stations -->
-                        <VBox spacing="8" style="-fx-background-color: white; -fx-background-radius: 6; -fx-padding: 15;">
-                            <HBox spacing="10" alignment="CENTER_LEFT">
-                                <Label text="Add/Sub Reservation Stations" 
-                                       style="-fx-font-size: 15; -fx-font-weight: bold; -fx-text-fill: #333;"/>
-                                <Region HBox.hgrow="ALWAYS"/>
-                                <Label fx:id="addSubBusyLabel" text="0 / 3 Busy"
-                                       style="-fx-font-size: 12; -fx-text-fill: #666;"/>
-                            </HBox>
-                            <TableView fx:id="addSubRsTable" prefHeight="150">
-                                <columnResizePolicy>
-                                    <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
-                                </columnResizePolicy>
-                                <columns>
-                                    <TableColumn fx:id="colRsName1" text="Name" prefWidth="80"/>
-                                    <TableColumn fx:id="colRsOp1" text="Operation" prefWidth="100"/>
-                                    <TableColumn fx:id="colRsVj1" text="Vj" prefWidth="80"/>
-                                    <TableColumn fx:id="colRsVk1" text="Vk" prefWidth="80"/>
-                                    <TableColumn fx:id="colRsQj1" text="Qj" prefWidth="80"/>
-                                    <TableColumn fx:id="colRsQk1" text="Qk" prefWidth="80"/>
-                                    <TableColumn fx:id="colRsBusy1" text="Busy" prefWidth="60"/>
-                                </columns>
-                            </TableView>
-                        </VBox>
+                        <!-- Add/Sub + Integer Stations side-by-side -->
+                        <HBox spacing="15">
+                            <!-- Add/Sub Stations -->
+                            <VBox spacing="8" HBox.hgrow="ALWAYS"
+                                  style="-fx-background-color: white; -fx-background-radius: 6; -fx-padding: 15;">
+                                <HBox spacing="10" alignment="CENTER_LEFT">
+                                    <Label text="Add/Sub Reservation Stations" 
+                                           style="-fx-font-size: 15; -fx-font-weight: bold; -fx-text-fill: #333;"/>
+                                    <Region HBox.hgrow="ALWAYS"/>
+                                    <Label fx:id="addSubBusyLabel" text="0 / 3 Busy"
+                                           style="-fx-font-size: 12; -fx-text-fill: #666;"/>
+                                </HBox>
+                                <TableView fx:id="addSubRsTable" prefHeight="220">
+                                    <columnResizePolicy>
+                                        <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+                                    </columnResizePolicy>
+                                    <columns>
+                                        <TableColumn fx:id="colRsName1" text="Name" prefWidth="90"/>
+                                        <TableColumn fx:id="colRsOp1" text="Operation" prefWidth="110"/>
+                                        <TableColumn fx:id="colRsVj1" text="Vj" prefWidth="90"/>
+                                        <TableColumn fx:id="colRsVk1" text="Vk" prefWidth="90"/>
+                                        <TableColumn fx:id="colRsQj1" text="Qj" prefWidth="90"/>
+                                        <TableColumn fx:id="colRsQk1" text="Qk" prefWidth="90"/>
+                                        <TableColumn fx:id="colRsBusy1" text="Busy" prefWidth="70"/>
+                                    </columns>
+                                </TableView>
+                            </VBox>
+
+                            <!-- Integer Stations -->
+                            <VBox spacing="8" HBox.hgrow="ALWAYS"
+                                  style="-fx-background-color: white; -fx-background-radius: 6; -fx-padding: 15;">
+                                <HBox spacing="10" alignment="CENTER_LEFT">
+                                    <Label text="Integer Reservation Stations"
+                                           style="-fx-font-size: 15; -fx-font-weight: bold; -fx-text-fill: #333;"/>
+                                    <Region HBox.hgrow="ALWAYS"/>
+                                    <Label fx:id="intBusyLabel" text="0 / 2 Busy"
+                                           style="-fx-font-size: 12; -fx-text-fill: #666;"/>
+                                </HBox>
+                                <TableView fx:id="intRsTable" prefHeight="220">
+                                    <columnResizePolicy>
+                                        <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+                                    </columnResizePolicy>
+                                    <columns>
+                                        <TableColumn fx:id="colIntRsName" text="Name" prefWidth="90"/>
+                                        <TableColumn fx:id="colIntRsOp" text="Operation" prefWidth="110"/>
+                                        <TableColumn fx:id="colIntRsVj" text="Vj" prefWidth="90"/>
+                                        <TableColumn fx:id="colIntRsVk" text="Vk" prefWidth="90"/>
+                                        <TableColumn fx:id="colIntRsQj" text="Qj" prefWidth="90"/>
+                                        <TableColumn fx:id="colIntRsQk" text="Qk" prefWidth="90"/>
+                                        <TableColumn fx:id="colIntRsBusy" text="Busy" prefWidth="70"/>
+                                    </columns>
+                                </TableView>
+                            </VBox>
+                        </HBox>
                         
                         <!-- Mul/Div Stations -->
                         <VBox spacing="8" style="-fx-background-color: white; -fx-background-radius: 6; -fx-padding: 15;">
@@ -205,18 +236,18 @@
                                 <Label fx:id="mulDivBusyLabel" text="0 / 2 Busy"
                                        style="-fx-font-size: 12; -fx-text-fill: #666;"/>
                             </HBox>
-                            <TableView fx:id="mulDivRsTable" prefHeight="120">
+                            <TableView fx:id="mulDivRsTable" prefHeight="220">
                                 <columnResizePolicy>
                                     <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
                                 </columnResizePolicy>
                                 <columns>
-                                    <TableColumn fx:id="colRsName2" text="Name" prefWidth="80"/>
-                                    <TableColumn fx:id="colRsOp2" text="Operation" prefWidth="100"/>
-                                    <TableColumn fx:id="colRsVj2" text="Vj" prefWidth="80"/>
-                                    <TableColumn fx:id="colRsVk2" text="Vk" prefWidth="80"/>
-                                    <TableColumn fx:id="colRsQj2" text="Qj" prefWidth="80"/>
-                                    <TableColumn fx:id="colRsQk2" text="Qk" prefWidth="80"/>
-                                    <TableColumn fx:id="colRsBusy2" text="Busy" prefWidth="60"/>
+                                    <TableColumn fx:id="colRsName2" text="Name" prefWidth="90"/>
+                                    <TableColumn fx:id="colRsOp2" text="Operation" prefWidth="120"/>
+                                    <TableColumn fx:id="colRsVj2" text="Vj" prefWidth="90"/>
+                                    <TableColumn fx:id="colRsVk2" text="Vk" prefWidth="90"/>
+                                    <TableColumn fx:id="colRsQj2" text="Qj" prefWidth="90"/>
+                                    <TableColumn fx:id="colRsQk2" text="Qk" prefWidth="90"/>
+                                    <TableColumn fx:id="colRsBusy2" text="Busy" prefWidth="70"/>
                                 </columns>
                             </TableView>
                         </VBox>
@@ -225,51 +256,56 @@
                         <Label text="Memory Buffers" 
                                style="-fx-font-size: 16; -fx-font-weight: bold; -fx-text-fill: #333; -fx-padding: 10 0 0 0;"/>
                         
-                        <!-- Load Buffer -->
-                        <VBox spacing="8" style="-fx-background-color: white; -fx-background-radius: 6; -fx-padding: 15;">
-                            <HBox spacing="10" alignment="CENTER_LEFT">
-                                <Label text="Load Buffer" 
-                                       style="-fx-font-size: 15; -fx-font-weight: bold; -fx-text-fill: #333;"/>
-                                <Region HBox.hgrow="ALWAYS"/>
-                                <Label fx:id="loadBufferBusyLabel" text="0 / 3 Busy"
-                                       style="-fx-font-size: 12; -fx-text-fill: #666;"/>
-                            </HBox>
-                            <TableView fx:id="loadBufferTable" prefHeight="140">
-                                <columnResizePolicy>
-                                    <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
-                                </columnResizePolicy>
-                                <columns>
-                                    <TableColumn fx:id="colLoadName" text="Name" prefWidth="80"/>
-                                    <TableColumn fx:id="colLoadOp" text="Operation" prefWidth="100"/>
-                                    <TableColumn fx:id="colLoadAddress" text="Address" prefWidth="120"/>
-                                    <TableColumn fx:id="colLoadDest" text="Destination" prefWidth="100"/>
-                                    <TableColumn fx:id="colLoadBusy" text="Busy" prefWidth="60"/>
-                                </columns>
-                            </TableView>
-                        </VBox>
-                        
-                        <!-- Store Buffer -->
-                        <VBox spacing="8" style="-fx-background-color: white; -fx-background-radius: 6; -fx-padding: 15;">
-                            <HBox spacing="10" alignment="CENTER_LEFT">
-                                <Label text="Store Buffer" 
-                                       style="-fx-font-size: 15; -fx-font-weight: bold; -fx-text-fill: #333;"/>
-                                <Region HBox.hgrow="ALWAYS"/>
-                                <Label fx:id="storeBufferBusyLabel" text="0 / 3 Busy"
-                                       style="-fx-font-size: 12; -fx-text-fill: #666;"/>
-                            </HBox>
-                            <TableView fx:id="storeBufferTable" prefHeight="140">
-                                <columnResizePolicy>
-                                    <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
-                                </columnResizePolicy>
-                                <columns>
-                                    <TableColumn fx:id="colStoreName" text="Name" prefWidth="80"/>
-                                    <TableColumn fx:id="colStoreOp" text="Operation" prefWidth="100"/>
-                                    <TableColumn fx:id="colStoreAddress" text="Address" prefWidth="120"/>
-                                    <TableColumn fx:id="colStoreSrc" text="Source" prefWidth="100"/>
-                                    <TableColumn fx:id="colStoreBusy" text="Busy" prefWidth="60"/>
-                                </columns>
-                            </TableView>
-                        </VBox>
+                        <!-- Load / Store Buffers side-by-side -->
+                        <HBox spacing="15">
+                            <!-- Load Buffer -->
+                            <VBox spacing="8" HBox.hgrow="ALWAYS"
+                                  style="-fx-background-color: white; -fx-background-radius: 6; -fx-padding: 15;">
+                                <HBox spacing="10" alignment="CENTER_LEFT">
+                                    <Label text="Load Buffer" 
+                                           style="-fx-font-size: 15; -fx-font-weight: bold; -fx-text-fill: #333;"/>
+                                    <Region HBox.hgrow="ALWAYS"/>
+                                    <Label fx:id="loadBufferBusyLabel" text="0 / 3 Busy"
+                                           style="-fx-font-size: 12; -fx-text-fill: #666;"/>
+                                </HBox>
+                                <TableView fx:id="loadBufferTable" prefHeight="200">
+                                    <columnResizePolicy>
+                                        <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+                                    </columnResizePolicy>
+                                    <columns>
+                                        <TableColumn fx:id="colLoadName" text="Name" prefWidth="90"/>
+                                        <TableColumn fx:id="colLoadOp" text="Operation" prefWidth="110"/>
+                                        <TableColumn fx:id="colLoadAddress" text="Address" prefWidth="140"/>
+                                        <TableColumn fx:id="colLoadDest" text="Destination" prefWidth="120"/>
+                                        <TableColumn fx:id="colLoadBusy" text="Busy" prefWidth="70"/>
+                                    </columns>
+                                </TableView>
+                            </VBox>
+                            
+                            <!-- Store Buffer -->
+                            <VBox spacing="8" HBox.hgrow="ALWAYS"
+                                  style="-fx-background-color: white; -fx-background-radius: 6; -fx-padding: 15;">
+                                <HBox spacing="10" alignment="CENTER_LEFT">
+                                    <Label text="Store Buffer" 
+                                           style="-fx-font-size: 15; -fx-font-weight: bold; -fx-text-fill: #333;"/>
+                                    <Region HBox.hgrow="ALWAYS"/>
+                                    <Label fx:id="storeBufferBusyLabel" text="0 / 3 Busy"
+                                           style="-fx-font-size: 12; -fx-text-fill: #666;"/>
+                                </HBox>
+                                <TableView fx:id="storeBufferTable" prefHeight="200">
+                                    <columnResizePolicy>
+                                        <TableView fx:constant="CONSTRAINED_RESIZE_POLICY" />
+                                    </columnResizePolicy>
+                                    <columns>
+                                        <TableColumn fx:id="colStoreName" text="Name" prefWidth="90"/>
+                                        <TableColumn fx:id="colStoreOp" text="Operation" prefWidth="110"/>
+                                        <TableColumn fx:id="colStoreAddress" text="Address" prefWidth="140"/>
+                                        <TableColumn fx:id="colStoreSrc" text="Source" prefWidth="120"/>
+                                        <TableColumn fx:id="colStoreBusy" text="Busy" prefWidth="70"/>
+                                    </columns>
+                                </TableView>
+                            </VBox>
+                        </HBox>
                     </VBox>
                 </ScrollPane>
             </Tab>
@@ -466,16 +502,21 @@
                                        style="-fx-font-size: 13;"/>
                                 <TextField fx:id="mulDivSizeField" text="2" prefWidth="100"
                                            GridPane.columnIndex="3" GridPane.rowIndex="0"/>
-                                
-                                <Label text="Load Buffer Size:" GridPane.columnIndex="0" GridPane.rowIndex="1"
+
+                                <Label text="Integer Stations:" GridPane.columnIndex="0" GridPane.rowIndex="1"
                                        style="-fx-font-size: 13;"/>
-                                <TextField fx:id="loadBufferSizeField" text="3" prefWidth="100"
+                                <TextField fx:id="intRsSizeField" text="2" prefWidth="100"
                                            GridPane.columnIndex="1" GridPane.rowIndex="1"/>
                                 
-                                <Label text="Store Buffer Size:" GridPane.columnIndex="2" GridPane.rowIndex="1"
+                                <Label text="Load Buffer Size:" GridPane.columnIndex="0" GridPane.rowIndex="2"
+                                       style="-fx-font-size: 13;"/>
+                                <TextField fx:id="loadBufferSizeField" text="3" prefWidth="100"
+                                           GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+                                
+                                <Label text="Store Buffer Size:" GridPane.columnIndex="2" GridPane.rowIndex="2"
                                        style="-fx-font-size: 13;"/>
                                 <TextField fx:id="storeBufferSizeField" text="3" prefWidth="100"
-                                           GridPane.columnIndex="3" GridPane.rowIndex="1"/>
+                                           GridPane.columnIndex="3" GridPane.rowIndex="2"/>
                             </GridPane>
                         </VBox>
                         
