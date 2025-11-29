@@ -526,7 +526,7 @@ public class SimulatorState {
                                               int loadBufSize, int storeBufSize,
                                               int cacheSz, int blockSz, int hitLat, int missPen,
                                               int fpAddLat, int fpMulLat, int intLat,
-                                              int loadLat, int storeLat, int branchLat) {
+                                              int loadLat, int storeLat, int branchLat, int branchLat2) {
         this.fpAddSize = fpAdd;
         this.fpMulSize = fpMul;
         this.intSize = intAlu;
