@@ -95,11 +95,11 @@ public class SimulatorState {
             System.out.println("[CDB] Broadcasting " + tag + " = " + result);
             rs.broadcastResult(tag, result);
             loadBuffer.broadcastResult(tag, result);
-            storeBuffer. broadcastResult(tag, result);
+            storeBuffer.broadcastResult(tag, result);
             branchUnit.broadcastResult(tag, result);
             
             // Update register file
-            for (String reg : regFile.getAllProducers(). keySet()) {
+            for (String reg : regFile.getAllProducers().keySet()) {
                 if (tag.equals(regFile.getProducer(reg))) {
                     regFile.setValue(reg, result);
                     regFile.clearProducer(reg);
@@ -135,7 +135,7 @@ public class SimulatorState {
         SimulationClock.reset();
         this.lastIssuedIndex = -1;
         
-        System. out.println("========== Initialization Complete ==========\n");
+        System.out.println("========== Initialization Complete ==========\n");
     }
 
     public boolean isProgramLoaded() {
@@ -156,18 +156,21 @@ public class SimulatorState {
                 if (pr.broadcast) {
                     cdb.broadcast(pr.tag, pr.result);
                 }
-                // Results that were produced in the previous simulator step are
-                // considered to write back in the cycle immediately after their
-                // last execution cycle. Since we are at currentCycle, that
-                // write-back cycle is (currentCycle - 1).
-                markInstructionWriteBack(pr.tag, currentCycle - 1);
+                markInstructionWriteBack(pr.tag, currentCycle);
+                
+                // FIXED: Remove load/store entries AFTER write-back
+                if (pr.tag.startsWith("LOAD")) {
+                    removeLoadEntryByTag(pr.tag);
+                } else if (pr.tag.startsWith("STORE")) {
+                    removeStoreEntryByTag(pr.tag);
+                }
             }
         }
         
         // Phase 1: Collect completed execution-unit results
         List<ReservationStationEntry> finishedRS = dispatcher.tickUnits();
         for (ReservationStationEntry entry : finishedRS) {
-            System.out.println("[WriteBack] " + entry. getId() + " completed execution");
+            System.out.println("[WriteBack] " + entry.getId() + " completed execution");
             double result = (entry.getResult() instanceof Double) ?
                 (Double) entry.getResult() : 0.0;
 
@@ -184,23 +187,22 @@ public class SimulatorState {
         }
         
         // Phase 2: Execute LOAD operations
-        List<LoadBuffer.LoadEntry> completedLoads = new ArrayList<>();
         for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
             if (loadEntry.executing) {
                 loadEntry.remainingCycles--;
-                System.out.println("[LoadBuffer] " + loadEntry.tag + " executing...  " + 
+                System.out.println("[LoadBuffer] " + loadEntry.tag + " executing... " + 
                                  loadEntry.remainingCycles + " cycles remaining");
                 
                 if (loadEntry.remainingCycles <= 0) {
                     System.out.println("[LoadBuffer] " + loadEntry.tag + " COMPLETED with value " + loadEntry.result);
                     // Load completes at the beginning of this cycle, so its last
-                    // execution cycle is (currentCycle - 1).
-                    markInstructionExecEnd(loadEntry.tag, currentCycle - 1);
+                    // execution cycle is currentCycle.
+                    markInstructionExecEnd(loadEntry.tag, currentCycle);
 
                     // Defer broadcast/write-back to the next simulator step so
                     // that dependents observe the result one cycle later.
                     pendingResults.add(new PendingResult(loadEntry.tag, loadEntry.result, true));
-                    completedLoads.add(loadEntry);
+                    // Entry will be removed in Phase 0 of next cycle after write-back
                 }
             } else if (loadEntry.isReady()) {
                 // Start executing this load in the *next* cycle after it becomes ready.
@@ -219,21 +221,15 @@ public class SimulatorState {
             }
         }
         
-        // Remove completed load entries
-        for (LoadBuffer. LoadEntry entry : completedLoads) {
-            loadBuffer.removeEntry(entry);
-        }
-        
         // Phase 3: Execute STORE operations
-        List<StoreBuffer.StoreEntry> completedStores = new ArrayList<>();
-        for (StoreBuffer. StoreEntry storeEntry : storeBuffer.getBuffer()) {
+        for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
             if (storeEntry.executing) {
                 storeEntry.remainingCycles--;
                 System.out.println("[StoreBuffer] " + storeEntry.tag + " executing... " + 
                                  storeEntry.remainingCycles + " cycles remaining");
                 
                 if (storeEntry.remainingCycles <= 0) {
-                    System.out.println("[StoreBuffer] " + storeEntry. tag + " COMPLETED");
+                    System.out.println("[StoreBuffer] " + storeEntry.tag + " COMPLETED");
                     // Store completes at the beginning of this cycle, so its last
                     // execution cycle is (currentCycle - 1).
                     markInstructionExecEnd(storeEntry.tag, currentCycle - 1);
@@ -241,7 +237,7 @@ public class SimulatorState {
                     // Stores don't broadcast on the CDB, but we still record their
                     // write-back via the pendingResults queue in the *next* step.
                     pendingResults.add(new PendingResult(storeEntry.tag, storeEntry.storeValue, false));
-                    completedStores.add(storeEntry);
+                    // Entry will be removed in Phase 0 of next cycle after write-back
                 }
             } else if (storeEntry.isReady()) {
                 // Start executing this store; like loads, we only begin counting
@@ -257,11 +253,6 @@ public class SimulatorState {
                                  " to address " + addr);
                 markInstructionExecStart(storeEntry.tag, currentCycle);
             }
-        }
-        
-        // Remove completed store entries
-        for (StoreBuffer.StoreEntry entry : completedStores) {
-            storeBuffer.removeEntry(entry);
         }
         
         // Phase 4: Dispatch ready instructions to execution units
@@ -292,7 +283,7 @@ public class SimulatorState {
             }
             if (branchUnit.shouldFlushQueue()) {
                 int targetPc = branchUnit.getResolvedTargetPc();
-                System.out. println("[Branch] Taking branch to PC=" + targetPc);
+                System.out.println("[Branch] Taking branch to PC=" + targetPc);
                 issueUnit.jumpTo(targetPc);
             }
             branchUnit.clear();
@@ -368,7 +359,7 @@ public class SimulatorState {
             if (canIssue) {
                 instr.setIssueCycle(currentCycle);
                 instructionStatuses.get(prevPc).issueCycle = currentCycle;
-                instructionStatuses.get(prevPc).tag = assignedTag;  // FIXED: Store the tag
+                instructionStatuses.get(prevPc).tag = assignedTag;
                 issueUnit.jumpTo(prevPc + 1);
                 recordInstructionMix(instr);
                 if (hazardSnapshot != null) {
@@ -381,12 +372,12 @@ public class SimulatorState {
                 lastIssuedIndex = prevPc;
                 System.out.println("[Issue] PC advanced from " + prevPc + " to " + issueUnit.getPc());
             } else {
-                System.out. println("[Issue] STALLED - No free resources for " + instr.getOpcode());
+                System.out.println("[Issue] STALLED - No free resources for " + instr.getOpcode());
             }
         }
         
         // Advance clock
-        SimulationClock. nextCycle();
+        SimulationClock.nextCycle();
         
         // Print status
         printStatus();
@@ -405,10 +396,10 @@ public class SimulatorState {
     }
     
     private void markInstructionExecEnd(String tag, int cycle) {
-        for (int i = 0; i < instructionStatuses. size(); i++) {
+        for (int i = 0; i < instructionStatuses.size(); i++) {
             InstructionStatus status = instructionStatuses.get(i);
             if (status.tag != null && status.tag.equals(tag) && status.execEndCycle == -1) {
-                status. execEndCycle = cycle;
+                status.execEndCycle = cycle;
                 break;
             }
         }
@@ -481,7 +472,7 @@ public class SimulatorState {
         SimulationClock.reset();
         lastIssuedIndex = -1;
         if (issueUnit != null) issueUnit.jumpTo(0);
-        if (cache != null) cache. clear();
+        if (cache != null) cache.clear();
         if (program != null) {
             initializeSimulator();
         }
@@ -512,8 +503,8 @@ public class SimulatorState {
         this.loadBufferSize = loadBufSize;
         this.storeBufferSize = storeBufSize;
         this.cacheSize = cacheSz;
-        this. blockSize = blockSz;
-        this. cacheHitLatency = hitLat;
+        this.blockSize = blockSz;
+        this.cacheHitLatency = hitLat;
         this.cacheMissPenalty = missPen;
 
         // Rebuild the simulator with the new configuration if a program is loaded
@@ -525,7 +516,7 @@ public class SimulatorState {
     public void setConfigurationWithLatencies(int fpAdd, int fpMul, int intAlu,
                                               int loadBufSize, int storeBufSize,
                                               int cacheSz, int blockSz, int hitLat, int missPen,
-                                              int fpAddLat, int fpMulLat, int intLat,
+                                              int fpAddLat, int fpMulLat, int fpDivLat, int intLat,
                                               int loadLat, int storeLat, int branchLat) {
         this.fpAddSize = fpAdd;
         this.fpMulSize = fpMul;
@@ -538,6 +529,8 @@ public class SimulatorState {
         this.cacheMissPenalty = missPen;
         this.fpAddLatency = fpAddLat;
         this.fpMulLatency = fpMulLat;
+        // Note: fpDivLat is passed but there's no field for it in the current implementation
+        // You may want to add: this.fpDivLatency = fpDivLat; if you add that field
         this.intLatency = intLat;
         this.loadLatency = loadLat;
         this.storeLatency = storeLat;
@@ -547,6 +540,7 @@ public class SimulatorState {
             initializeSimulator();
         }
     }
+    
     
     public void loadInitialRegisterValues(Map<String, Double> values) {
         initialRegValues = new HashMap<>(values);
@@ -690,6 +684,35 @@ public class SimulatorState {
         return !operand.matches("-?\\d+");
     }
 
+    // FIXED: Helper methods to remove load/store entries after write-back
+    private void removeLoadEntryByTag(String tag) {
+        if (loadBuffer == null) return;
+        List<LoadBuffer.LoadEntry> toRemove = new ArrayList<>();
+        for (LoadBuffer.LoadEntry entry : loadBuffer.getBuffer()) {
+            if (entry.tag.equals(tag)) {
+                toRemove.add(entry);
+            }
+        }
+        for (LoadBuffer.LoadEntry entry : toRemove) {
+            loadBuffer.removeEntry(entry);
+            System.out.println("[LoadBuffer] Removed " + tag + " after write-back");
+        }
+    }
+
+    private void removeStoreEntryByTag(String tag) {
+        if (storeBuffer == null) return;
+        List<StoreBuffer.StoreEntry> toRemove = new ArrayList<>();
+        for (StoreBuffer.StoreEntry entry : storeBuffer.getBuffer()) {
+            if (entry.tag.equals(tag)) {
+                toRemove.add(entry);
+            }
+        }
+        for (StoreBuffer.StoreEntry entry : toRemove) {
+            storeBuffer.removeEntry(entry);
+            System.out.println("[StoreBuffer] Removed " + tag + " after write-back");
+        }
+    }
+
     private static class IssuedInstructionInfo {
         @SuppressWarnings("unused")
         final String tag;
@@ -735,4 +758,5 @@ public class SimulatorState {
             this.broadcast = broadcast;
         }
     }
+    
 }

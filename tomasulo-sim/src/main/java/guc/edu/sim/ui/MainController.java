@@ -184,7 +184,7 @@ public class MainController {
         setupCacheTable();
 
         refreshAllLabels();
-        log("✓ Tomasulo Simulator initialized successfully");
+        log("âœ“ Tomasulo Simulator initialized successfully");
         updateStatusBar("Ready to load program");
     }
 
@@ -322,18 +322,18 @@ public class MainController {
     @FXML
     private void onRun() {
         if (isRunning) {
-            log("⚠ Simulation already running");
+            log("âš  Simulation already running");
             return;
         }
         if (sim == null || ! sim.isProgramLoaded()) {
-            log("⚠ No program loaded");
+            log("âš  No program loaded");
             return;
         }
         
         isRunning = true;
         statusLabel.setText("Running");
         statusLabel.setStyle("-fx-font-size: 14; -fx-font-weight: bold; -fx-text-fill: #4CAF50;");
-        log("▶ Starting continuous simulation...");
+        log("â–¶ Starting continuous simulation...");
         
         // Run simulation in background thread
         new Thread(() -> {
@@ -354,7 +354,7 @@ public class MainController {
                 isRunning = false;
                 statusLabel.setText("Completed");
                 statusLabel.setStyle("-fx-font-size: 14; -fx-font-weight: bold; -fx-text-fill: #2196F3;");
-                log("✓ Simulation completed");
+                log("âœ“ Simulation completed");
             });
         }).start();
     }
@@ -362,20 +362,20 @@ public class MainController {
     @FXML
     private void onPause() {
         if (!isRunning) {
-            log("⚠ Simulation not running");
+            log("âš  Simulation not running");
             return;
         }
         isRunning = false;
         statusLabel.setText("Paused");
         statusLabel.setStyle("-fx-font-size: 14; -fx-font-weight: bold; -fx-text-fill: #FF9800;");
-        log("⏸ Simulation paused at cycle " + cycle);
+        log("â�¸ Simulation paused at cycle " + cycle);
         updateStatusBar("Simulation paused");
     }
 
     @FXML
     private void onStep() {
         if (sim == null || !sim.isProgramLoaded()) {
-            log("⚠ No program loaded.Use File > Open Program.. .");
+            log("âš  No program loaded.Use File > Open Program.. .");
             return;
         }
         stepSimulation();
@@ -414,13 +414,13 @@ public class MainController {
                 }
             }
             
-            log("⏭ Stepped to cycle " + cycle);
+            log("â�­ Stepped to cycle " + cycle);
             updateStatusBar("Executed cycle " + cycle);
             
             System.out.println("==================== UI UPDATE COMPLETE ====================\n");
             
         } catch (Exception e) {
-            log("❌ Error during simulation step: " + e.getMessage());
+            log("â�Œ Error during simulation step: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -444,13 +444,13 @@ public class MainController {
         refreshAllLabels();
         statusLabel.setText("Ready");
         statusLabel.setStyle("-fx-font-size: 14; -fx-font-weight: bold; -fx-text-fill: #666;");
-        log("⟲ Simulation reset to initial state");
+        log("âŸ² Simulation reset to initial state");
         updateStatusBar("Simulation reset");
     }
 
     @FXML
     private void onNewProgram() {
-        log("📄 Creating new program.. .");
+        log("ðŸ“„ Creating new program.. .");
         updateStatusBar("Ready for new program");
         // TODO: Open program editor dialog
     }
@@ -484,10 +484,10 @@ public class MainController {
                 updateCacheView();
                 
                 refreshAllLabels();
-                log("📂 Loaded program: " + file.getName());
+                log("ðŸ“‚ Loaded program: " + file.getName());
                 updateStatusBar("Loaded: " + file.getName());
             } catch (Exception ex) {
-                log("❌ Failed to load program: " + ex.getMessage());
+                log("â�Œ Failed to load program: " + ex.getMessage());
                 ex.printStackTrace();
                 updateStatusBar("Load failed");
             }
@@ -530,31 +530,31 @@ public class MainController {
 
     @FXML
     private void onSaveProgram() {
-        log("💾 Saving program...");
+        log("ðŸ’¾ Saving program...");
         // TODO: Implement save functionality
     }
 
     @FXML
     private void onLoadConfig() {
-        log("⚙ Loading configuration...");
+        log("âš™ Loading configuration...");
         // TODO: Load configuration from file
     }
 
     @FXML
     private void onSaveConfig() {
-        log("💾 Saving configuration...");
+        log("ðŸ’¾ Saving configuration...");
         // TODO: Save configuration to file
     }
 
     @FXML
     private void onShowConfig() {
-        log("⚙ Opening configuration dialog...");
+        log("âš™ Opening configuration dialog...");
         // Configuration is now in a tab, just switch to it
     }
 
     @FXML
     private void onExit() {
-        log("👋 Exiting simulator...");
+        log("ðŸ‘‹ Exiting simulator...");
         Platform.exit();
     }
 
@@ -574,7 +574,7 @@ public class MainController {
         cacheHits = 0;
         cacheMisses = 0;
         refreshCacheStats();
-        log("🗑 Cache cleared");
+        log("ðŸ—‘ Cache cleared");
     }
 
     @FXML
@@ -618,14 +618,14 @@ public class MainController {
                 updateCacheView();
                 refreshAllLabels();
                 
-                log("✓ Configuration applied successfully");
+                log("âœ“ Configuration applied successfully");
                 updateStatusBar("Configuration updated");
                 refreshConfigLabels();
             } else {
-                log("⚠ Load a program first before applying configuration");
+                log("âš  Load a program first before applying configuration");
             }
         } catch (Exception e) {
-            log("❌ Error applying configuration: " + e.getMessage());
+            log("â�Œ Error applying configuration: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -671,13 +671,13 @@ public class MainController {
         registerInitArea.clear();
         memoryInitArea.clear();
         
-        log("⟲ Configuration reset to defaults");
+        log("âŸ² Configuration reset to defaults");
         refreshConfigLabels();
     }
 
     @FXML
     private void onLoadRegisterValues() {
-        log("📂 Loading register values from file...");
+        log("ðŸ“‚ Loading register values from file...");
         // TODO: Implement file loading
     }
 
@@ -691,7 +691,7 @@ public class MainController {
             reg.valueProperty().set("0.0");
             reg.tagProperty().set("");
         }
-        log("⟲ Registers reset to zero");
+        log("âŸ² Registers reset to zero");
     }
 
     @FXML
@@ -713,11 +713,11 @@ public class MainController {
                 "Developed for CSEN 702: Microprocessors\n" +
                 "Winter 2025\n\n" +
                 "Features:\n" +
-                "• Out-of-order execution\n" +
-                "• Register renaming\n" +
-                "• Hazard detection and resolution\n" +
-                "• Cache simulation\n" +
-                "• Performance metrics");
+                "â€¢ Out-of-order execution\n" +
+                "â€¢ Register renaming\n" +
+                "â€¢ Hazard detection and resolution\n" +
+                "â€¢ Cache simulation\n" +
+                "â€¢ Performance metrics");
         alert.showAndWait();
     }
 
@@ -737,7 +737,7 @@ public class MainController {
 
     @FXML
     private void onExportStats() {
-        log("📊 Exporting statistics.. .");
+        log("ðŸ“Š Exporting statistics.. .");
         // TODO: Export to CSV or text file
     }
 
@@ -763,9 +763,9 @@ public class MainController {
                 try {
                     double value = Double.parseDouble(parts[1]. trim());
                     regValues.put(reg, value);
-                    log("📝 Setting " + reg + " = " + value);
+                    log("ðŸ“� Setting " + reg + " = " + value);
                 } catch (NumberFormatException e) {
-                    log("⚠ Invalid value for " + reg + ": " + parts[1]);
+                    log("âš  Invalid value for " + reg + ": " + parts[1]);
                 }
             }
         }
@@ -794,9 +794,9 @@ public class MainController {
                     int address = Integer.parseInt(parts[0].trim());
                     double value = Double.parseDouble(parts[1]. trim());
                     memValues.put(address, value);
-                    log("📝 Setting Memory[" + address + "] = " + value);
+                    log("ðŸ“� Setting Memory[" + address + "] = " + value);
                 } catch (NumberFormatException e) {
-                    log("⚠ Invalid memory entry: " + line);
+                    log("âš  Invalid memory entry: " + line);
                 }
             }
         }
