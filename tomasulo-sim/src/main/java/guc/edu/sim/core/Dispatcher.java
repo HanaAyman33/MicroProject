@@ -6,12 +6,12 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Dispatcher manages reservation station entries and execution units.
+ * Dispatcher manages reservation station entries and execution units. 
  * - Keeps a list of active RS entries (these entries are created by your issue/RS allocation logic)
  * - Periodically dispatches ready RS entries to idle execution units that match the station type
  * - Ticks execution units and returns finished entries for write-back
  *
- * Important: This dispatcher is intentionally lightweight. Integrate it with your existing
+ * Important: This dispatcher is intentionally lightweight.  Integrate it with your existing
  * ReservationStation class/list so the entries here are the same objects used by the rest of the simulator.
  */
 public class Dispatcher {
@@ -37,11 +37,11 @@ public class Dispatcher {
 
     /**
      * Dispatch ready entries to idle units (one per unit per cycle).
-     * Simple greedy strategy: iterate entries, for each ready entry find idle unit of same type and start.
+     * Simple greedy strategy: iterate entries, for each ready entry find idle unit of same type and start. 
      */
     public void dispatch() {
         for (ReservationStationEntry entry : entries) {
-            if (!entry.isReady()) continue;
+            if (! entry.isReady()) continue;
             for (ExecutionUnit u : units) {
                 if (u.isIdle() && u.getUnitType() == entry.getType()) {
                     boolean started = u.start(entry);
@@ -52,7 +52,7 @@ public class Dispatcher {
     }
 
     /**
-     * Advance all execution units by one cycle. Collect finished entries for write-back.
+     * Advance all execution units by one cycle.  Collect finished entries for write-back.
      */
     public List<ReservationStationEntry> tickUnits() {
         List<ReservationStationEntry> finished = new ArrayList<>();
@@ -63,7 +63,7 @@ public class Dispatcher {
                 // remove from dispatch entries if present
                 Iterator<ReservationStationEntry> it = entries.iterator();
                 while (it.hasNext()) {
-                    if (it.next().getId().equals(entry.getId())) {
+                    if (it.next().getId(). equals(entry.getId())) {
                         it.remove();
                         break;
                     }

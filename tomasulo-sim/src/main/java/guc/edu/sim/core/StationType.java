@@ -9,5 +9,5 @@ public enum StationType {
     FP_MUL,    // Floating point mul / div
     INTEGER,   // Integer ALU (ADDI, SUBI, etc)
     LOAD,      // Load (LW, LD, L.D, L.S)
-    STORE      // Store (SW, SD, S.D, S.S)
+    STORE ,     // Store (SW, SD, S.D, S.S)
 }

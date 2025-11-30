@@ -1,6 +1,6 @@
 package guc.edu.sim.core;
 
-import java.util.Optional;
+import java.util. Optional;
 
 /**
  * A single execution unit that can execute one reservation-station entry at a time.
@@ -14,7 +14,7 @@ public class ExecutionUnit {
 
     public ExecutionUnit(StationType unitType, LatencyConfig latencyConfig) {
         this.unitType = unitType;
-        this.latencyConfig = latencyConfig;
+        this. latencyConfig = latencyConfig;
     }
 
     public StationType getUnitType() { return unitType; }
@@ -23,29 +23,46 @@ public class ExecutionUnit {
         return current == null;
     }
 
+    // ADDED: Method to get remaining cycles for debug prints
+    public int getRemainingCycles() {
+        return remainingCycles;
+    }
+
+    // ADDED: Method to get current entry for debug prints
+    public ReservationStationEntry getCurrentEntry() {
+        return current;
+    }
+
     /**
-     * Start executing an entry (assumes entry.isReady() true).
+     * Start executing an entry (assumes entry. isReady() true).
      */
     public boolean start(ReservationStationEntry entry) {
-        if (!isIdle()) return false;
+        if (! isIdle()) return false;
         if (entry == null) return false;
-        if (!entry.isReady()) return false;
+        if (! entry.isReady()) return false;
         current = entry;
         int latency = latencyConfig.getLatency(unitType, entry.getOpcode());
         remainingCycles = Math.max(1, latency);
         entry.markExecuting();
+        System.out.println("[ExecutionUnit-" + unitType + "] Started " + entry. getId() + 
+                         " with latency " + remainingCycles + " cycles");
         return true;
     }
 
     /**
-     * Advance one cycle. If execution completes, return the completed entry.
+     * Advance one cycle.  If execution completes, return the completed entry.
      */
     public Optional<ReservationStationEntry> tick() {
         if (current == null) return Optional.empty();
+        
+        // ADDED: Debug print for remaining cycles
+        System.out.println("[ExecutionUnit-" + unitType + "] " + current.getId() + 
+                         " executing...  " + remainingCycles + " cycles remaining");
+        
         remainingCycles--;
         if (remainingCycles <= 0) {
             // compute result placeholder — integration point:
-            // In your real simulator, replace computeResult(...) with real ALU behavior.
+            // In your real simulator, replace computeResult(... ) with real ALU behavior. 
             Object res = computeResult(current);
             current.setResult(res);
             ReservationStationEntry finished = current;
@@ -57,7 +74,7 @@ public class ExecutionUnit {
 
     private Object computeResult(ReservationStationEntry entry) {
         double vj = entry.getVj() instanceof Number ? ((Number) entry.getVj()).doubleValue() : 0.0;
-        double vk = entry.getVk() instanceof Number ? ((Number) entry.getVk()).doubleValue() : 0.0;
+        double vk = entry.getVk() instanceof Number ? ((Number) entry. getVk()).doubleValue() : 0.0;
         return ALU.compute(entry.getOpcode(), vj, vk);
     }
 }
