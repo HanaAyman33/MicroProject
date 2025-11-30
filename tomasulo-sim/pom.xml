@@ -10,7 +10,7 @@
 
     <properties>
         <!-- Use a single release property (easier and recommended) -->
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.release>17</maven.compiler.release>
         <javafx.version>21.0.2</javafx.version>
     </properties>
 
