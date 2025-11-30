@@ -1,6 +1,10 @@
 # VS Code
 .vscode/
 
+# Eclipse
+.classpath
+.settings/
+
 # OS junk
 .DS_Store
 Thumbs.db
