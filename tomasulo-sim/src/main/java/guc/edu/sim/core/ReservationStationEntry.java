@@ -82,15 +82,15 @@ public class ReservationStationEntry {
      * An entry is ready for dispatch only if:
      * 1. All operands are available (Qj == null && Qk == null)
      * 2. It's not already executing
-     * 3. Either it was issued with all operands ready (readyCycle < 0 or readyCycle < currentCycle)
+     * 3. Either it was issued with all operands ready (readyCycle < 0)
      *    OR it received operands from CDB in a previous cycle (currentCycle > readyCycle)
      */
     public boolean isReadyForDispatch(int currentCycle) {
         if (Qj != null || Qk != null || executing) {
             return false;
         }
-        // If readyCycle < 0, operands were ready at issue time (not from CDB)
-        // If readyCycle > 0, operands came from CDB, so must wait until next cycle
+        // If readyCycle < 0, operands were ready at issue time (not from CDB), so dispatch immediately
+        // If readyCycle >= 0, operands came from CDB in that cycle, so must wait until next cycle
         return readyCycle < 0 || currentCycle > readyCycle;
     }
 

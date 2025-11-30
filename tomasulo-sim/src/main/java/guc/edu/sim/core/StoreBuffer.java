@@ -78,17 +78,13 @@ public class StoreBuffer {
                 entry.baseValue = result;
                 entry.baseReady = true;
                 entry.baseProducer = null;
-                if (currentCycle >= 0 && entry.baseReady && entry.storeReady && entry.readyCycle < 0) {
-                    entry.readyCycle = currentCycle;
-                }
+                entry.updateReadyCycleIfReady(currentCycle);
             }
             if (tag.equals(entry.storeProducer)) {
                 entry.storeValue = result;
                 entry.storeReady = true;
                 entry.storeProducer = null;
-                if (currentCycle >= 0 && entry.baseReady && entry.storeReady && entry.readyCycle < 0) {
-                    entry.readyCycle = currentCycle;
-                }
+                entry.updateReadyCycleIfReady(currentCycle);
             }
         }
     }
@@ -109,6 +105,13 @@ public class StoreBuffer {
         public StoreEntry(String tag, Instruction instruction) {
             this.tag = tag;
             this.instruction = instruction;
+        }
+        
+        /** Update readyCycle if all operands are now available */
+        void updateReadyCycleIfReady(int currentCycle) {
+            if (currentCycle >= 0 && baseReady && storeReady && readyCycle < 0) {
+                readyCycle = currentCycle;
+            }
         }
 
         public boolean isReady() {
