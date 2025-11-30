@@ -153,16 +153,39 @@ public class SimulatorState {
         System.out.println("\n========== Cycle " + currentCycle + " ==========");
 
         // Phase 0: Write-back any results that finished in the previous cycle
-        // Set the broadcast cycle so CDB listeners can record when operands became ready
+        // Set the broadcast cycle so CDB listeners can record when operands became ready.
+        // Only one value may ride the CDB per cycle; extra results stay queued.
         currentBroadcastCycle = currentCycle;
         if (! pendingResults.isEmpty()) {
-            List<PendingResult> toBroadcast = new ArrayList<>(pendingResults);
-            pendingResults.clear();
-            for (PendingResult pr : toBroadcast) {
-                if (pr.broadcast) {
-                    cdb.broadcast(pr.tag, pr.result);
+            PendingResult broadcastThisCycle = null;
+            int deferredCount = 0;
+            Iterator<PendingResult> iterator = pendingResults.iterator();
+            
+            while (iterator.hasNext()) {
+                PendingResult pr = iterator.next();
+                
+                // Stores (or any op that doesn't broadcast) always complete immediately
+                if (!pr.broadcast) {
+                    iterator.remove();
+                    markInstructionWriteBack(pr.tag, currentCycle);
+                    continue;
                 }
-                markInstructionWriteBack(pr.tag, currentCycle);
+                
+                // First broadcaster gets the bus; others wait in the queue
+                if (broadcastThisCycle == null) {
+                    broadcastThisCycle = pr;
+                    iterator.remove();
+                } else {
+                    deferredCount++;
+                }
+            }
+            
+            if (broadcastThisCycle != null) {
+                cdb.broadcast(broadcastThisCycle.tag, broadcastThisCycle.result);
+                markInstructionWriteBack(broadcastThisCycle.tag, currentCycle);
+                if (deferredCount > 0) {
+                    System.out.println("[CDB] Bus busy; deferred " + deferredCount + " result(s) to later cycle(s)");
+                }
             }
         }
         
