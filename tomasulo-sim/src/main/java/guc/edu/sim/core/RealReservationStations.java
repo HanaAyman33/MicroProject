@@ -123,6 +123,10 @@ public class RealReservationStations implements ReservationStations {
     }
 
     public void broadcastResult(String tag, double result) {
+        broadcastResult(tag, result, -1);
+    }
+    
+    public void broadcastResult(String tag, double result, int currentCycle) {
         ReservationStationEntry selfToRemove = null;
         for (ReservationStationEntry entry : stations) {
             // When the producing instruction's own result is broadcast, we
@@ -134,10 +138,18 @@ public class RealReservationStations implements ReservationStations {
                 continue;
             }
             if (tag.equals(entry.getQj())) {
-                entry.setVj(result);
+                if (currentCycle >= 0) {
+                    entry.setVj(result, currentCycle);
+                } else {
+                    entry.setVj(result);
+                }
             }
             if (tag.equals(entry.getQk())) {
-                entry.setVk(result);
+                if (currentCycle >= 0) {
+                    entry.setVk(result, currentCycle);
+                } else {
+                    entry.setVk(result);
+                }
             }
         }
         if (selfToRemove != null) {
