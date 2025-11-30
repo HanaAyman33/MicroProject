@@ -16,6 +16,7 @@ public class BranchUnit implements BranchUnitInterface {
     private boolean shouldBranch = false;
     private int latency = 1;
     private int remainingCycles = 0;
+    private int readyCycle = -1;  // cycle when all operands became ready (-1 means ready at issue or not yet)
 
     public BranchUnit(RegisterFile regFile, Program program) {
         this.regFile = regFile;
@@ -33,6 +34,7 @@ public class BranchUnit implements BranchUnitInterface {
         currentBranch = instr;
         resolved = false;
         remainingCycles = latency;
+        readyCycle = -1;  // Reset readyCycle for new instruction
         
         // Read operands
         String s1 = instr.getSrc1();
@@ -47,6 +49,8 @@ public class BranchUnit implements BranchUnitInterface {
                 src1Producer = prod;
                 src1Ready = false;
             }
+        } else {
+            src1Ready = true;
         }
         
         if (s2 != null) {
@@ -58,13 +62,25 @@ public class BranchUnit implements BranchUnitInterface {
                 src2Producer = prod;
                 src2Ready = false;
             }
+        } else {
+            src2Ready = true;
         }
         
         System.out.println("[Branch] Accepted " + instr.getOpcode() + " waiting for operands");
     }
 
     public void tryResolve() {
+        tryResolve(-1);
+    }
+    
+    public void tryResolve(int currentCycle) {
         if (!busy || resolved || !src1Ready || !src2Ready) return;
+        
+        // If operands were received from CDB, wait until the next cycle to start execution
+        if (readyCycle >= 0 && currentCycle >= 0 && currentCycle <= readyCycle) {
+            return;
+        }
+        
         if (remainingCycles > 0) {
             remainingCycles--;
             return;
@@ -90,6 +106,10 @@ public class BranchUnit implements BranchUnitInterface {
     }
 
     public void broadcastResult(String tag, double result) {
+        broadcastResult(tag, result, -1);
+    }
+    
+    public void broadcastResult(String tag, double result, int currentCycle) {
         if (tag.equals(src1Producer)) {
             src1Val = result;
             src1Ready = true;
@@ -100,6 +120,10 @@ public class BranchUnit implements BranchUnitInterface {
             src2Ready = true;
             src2Producer = null;
         }
+        // Record when operands became ready from CDB
+        if (currentCycle >= 0 && src1Ready && src2Ready && readyCycle < 0) {
+            readyCycle = currentCycle;
+        }
     }
 
     public void clear() {
@@ -109,6 +133,11 @@ public class BranchUnit implements BranchUnitInterface {
         shouldBranch = false;
         targetPc = -1;
         remainingCycles = 0;
+        readyCycle = -1;
+        src1Ready = false;
+        src2Ready = false;
+        src1Producer = null;
+        src2Producer = null;
     }
 
     @Override

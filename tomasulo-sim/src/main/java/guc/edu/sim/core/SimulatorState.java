@@ -56,6 +56,7 @@ public class SimulatorState {
     private final Map<String, IssuedInstructionInfo> tagToInstruction = new HashMap<>();
     private int branchTagCounter = 0;
     private String activeBranchTag;
+    private int currentBroadcastCycle = -1;  // Track cycle during CDB broadcast for readyCycle timing
 
     public void loadProgramLines(List<String> lines) {
         ProgramLoader loader = new ProgramLoader();
@@ -96,10 +97,10 @@ public class SimulatorState {
         cdb = new CommonDataBus();
         cdb.addListener((tag, result) -> {
             System.out.println("[CDB] Broadcasting " + tag + " = " + result);
-            rs.broadcastResult(tag, result);
-            loadBuffer.broadcastResult(tag, result);
-            storeBuffer.broadcastResult(tag, result);
-            branchUnit.broadcastResult(tag, result);
+            rs.broadcastResult(tag, result, currentBroadcastCycle);
+            loadBuffer.broadcastResult(tag, result, currentBroadcastCycle);
+            storeBuffer.broadcastResult(tag, result, currentBroadcastCycle);
+            branchUnit.broadcastResult(tag, result, currentBroadcastCycle);
             
             // Update register file
             for (String reg : regFile.getAllProducers(). keySet()) {
@@ -152,6 +153,8 @@ public class SimulatorState {
         System.out.println("\n========== Cycle " + currentCycle + " ==========");
 
         // Phase 0: Write-back any results that finished in the previous cycle
+        // Set the broadcast cycle so CDB listeners can record when operands became ready
+        currentBroadcastCycle = currentCycle;
         if (! pendingResults.isEmpty()) {
             List<PendingResult> toBroadcast = new ArrayList<>(pendingResults);
             pendingResults.clear();
@@ -194,7 +197,7 @@ public class SimulatorState {
                     pendingResults.add(new PendingResult(loadEntry.tag, loadEntry.result, true));
                     completedLoads.add(loadEntry);
                 }
-            } else if (loadEntry.isReady()) {
+            } else if (loadEntry.isReadyForDispatch(currentCycle)) {
                 loadEntry.executing = true;
                 int addr = loadEntry.computeAddress();
 
@@ -226,7 +229,7 @@ public class SimulatorState {
                     pendingResults.add(new PendingResult(storeEntry. tag, storeEntry.storeValue, false));
                     completedStores.add(storeEntry);
                 }
-            } else if (storeEntry.isReady()) {
+            } else if (storeEntry.isReadyForDispatch(currentCycle)) {
                 storeEntry.executing = true;
                 int addr = storeEntry.computeAddress();
 
@@ -246,8 +249,9 @@ public class SimulatorState {
         }
         
         // Phase 4: Dispatch ready instructions to execution units (AFTER ticking)
+        // Only dispatch entries that are ready and received operands before this cycle
         for (ReservationStationEntry entry : rs.getStations()) {
-            if (entry.isReady() && !entry.isExecuting()) {
+            if (entry.isReadyForDispatch(currentCycle) && !entry.isExecuting()) {
                 dispatcher.addEntry(entry);
                 System.out.println("[Dispatch] Added " + entry.getId() + " to dispatcher queue");
             }
@@ -262,7 +266,7 @@ public class SimulatorState {
         }
         
         // Phase 5: Resolve branches
-        branchUnit.tryResolve();
+        branchUnit.tryResolve(currentCycle);
         if (branchUnit.hasResolvedBranch()) {
             if (activeBranchTag != null) {
                 markInstructionExecEnd(activeBranchTag, currentCycle);

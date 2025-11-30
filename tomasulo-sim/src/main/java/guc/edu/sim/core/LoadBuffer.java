@@ -63,11 +63,18 @@ public class LoadBuffer {
     }
 
     public void broadcastResult(String tag, double result) {
+        broadcastResult(tag, result, -1);
+    }
+    
+    public void broadcastResult(String tag, double result, int currentCycle) {
         for (LoadEntry entry : buffer) {
             if (tag.equals(entry.baseProducer)) {
                 entry.baseValue = result;
                 entry.baseReady = true;
                 entry.baseProducer = null;
+                if (currentCycle >= 0 && entry.readyCycle < 0) {
+                    entry.readyCycle = currentCycle;
+                }
             }
         }
     }
@@ -81,6 +88,7 @@ public class LoadBuffer {
         public boolean executing = false;
         public int remainingCycles = 0;
         public double result;
+        public int readyCycle = -1;  // cycle when this entry became ready (-1 means ready at issue or not yet)
 
         public LoadEntry(String tag, Instruction instruction) {
             this.tag = tag;
@@ -89,6 +97,21 @@ public class LoadBuffer {
 
         public boolean isReady() {
             return baseReady && !executing;
+        }
+        
+        /**
+         * Check if the entry is ready to be dispatched in the given cycle.
+         * An entry is ready for dispatch only if:
+         * 1. Base address operand is ready
+         * 2. It's not already executing
+         * 3. Either it was issued with operand ready (readyCycle < 0)
+         *    OR it received operand from CDB in a previous cycle (currentCycle > readyCycle)
+         */
+        public boolean isReadyForDispatch(int currentCycle) {
+            if (!baseReady || executing) {
+                return false;
+            }
+            return readyCycle < 0 || currentCycle > readyCycle;
         }
 
         public int computeAddress() {

@@ -17,6 +17,7 @@ public class ReservationStationEntry {
     private String destination;           // register or ROB tag to write result to
     private boolean executing;            // execution started (on an execution unit)
     private Object result;                // computed result after execution
+    private int readyCycle = -1;          // cycle when this entry became ready (-1 means never/not yet)
 
     public ReservationStationEntry(String id, StationType type, String opcode, String destination) {
         this.id = id;
@@ -24,6 +25,7 @@ public class ReservationStationEntry {
         this.opcode = opcode;
         this.destination = destination;
         this.executing = false;
+        this.readyCycle = -1;
     }
 
     public String getId() { return id; }
@@ -33,19 +35,63 @@ public class ReservationStationEntry {
 
     public Object getVj() { return Vj; }
     public void setVj(Object vj) { Vj = vj; Qj = null; }
+    
+    /** Set Vj value and record readyCycle if this made the entry ready (from CDB broadcast) */
+    public void setVj(Object vj, int currentCycle) { 
+        Vj = vj; 
+        Qj = null; 
+        updateReadyCycle(currentCycle);
+    }
 
     public Object getVk() { return Vk; }
     public void setVk(Object vk) { Vk = vk; Qk = null; }
+    
+    /** Set Vk value and record readyCycle if this made the entry ready (from CDB broadcast) */
+    public void setVk(Object vk, int currentCycle) { 
+        Vk = vk; 
+        Qk = null; 
+        updateReadyCycle(currentCycle);
+    }
 
     public String getQj() { return Qj; }
     public void setQj(String qj) { Qj = qj; Vj = null; }
 
     public String getQk() { return Qk; }
     public void setQk(String qk) { Qk = qk; Vk = null; }
+    
+    /** Update readyCycle if all operands are now available */
+    private void updateReadyCycle(int currentCycle) {
+        if (Qj == null && Qk == null && readyCycle < 0) {
+            readyCycle = currentCycle;
+        }
+    }
+    
+    /** Get the cycle when this entry became ready */
+    public int getReadyCycle() { return readyCycle; }
+    
+    /** Set the readyCycle (used when entry is allocated with all operands ready) */
+    public void setReadyCycle(int cycle) { this.readyCycle = cycle; }
 
     public boolean isReady() {
         // For load/store semantics you might only need one operand; that check can be refined externally.
         return Qj == null && Qk == null && !executing;
+    }
+    
+    /**
+     * Check if the entry is ready to be dispatched in the given cycle.
+     * An entry is ready for dispatch only if:
+     * 1. All operands are available (Qj == null && Qk == null)
+     * 2. It's not already executing
+     * 3. Either it was issued with all operands ready (readyCycle < 0 or readyCycle < currentCycle)
+     *    OR it received operands from CDB in a previous cycle (currentCycle > readyCycle)
+     */
+    public boolean isReadyForDispatch(int currentCycle) {
+        if (Qj != null || Qk != null || executing) {
+            return false;
+        }
+        // If readyCycle < 0, operands were ready at issue time (not from CDB)
+        // If readyCycle > 0, operands came from CDB, so must wait until next cycle
+        return readyCycle < 0 || currentCycle > readyCycle;
     }
 
     public boolean isExecuting() { return executing; }

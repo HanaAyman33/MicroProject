@@ -69,16 +69,26 @@ public class StoreBuffer {
     }
 
     public void broadcastResult(String tag, double result) {
+        broadcastResult(tag, result, -1);
+    }
+    
+    public void broadcastResult(String tag, double result, int currentCycle) {
         for (StoreEntry entry : buffer) {
             if (tag.equals(entry.baseProducer)) {
                 entry.baseValue = result;
                 entry.baseReady = true;
-                entry. baseProducer = null;
+                entry.baseProducer = null;
+                if (currentCycle >= 0 && entry.baseReady && entry.storeReady && entry.readyCycle < 0) {
+                    entry.readyCycle = currentCycle;
+                }
             }
-            if (tag.equals(entry. storeProducer)) {
+            if (tag.equals(entry.storeProducer)) {
                 entry.storeValue = result;
                 entry.storeReady = true;
-                entry. storeProducer = null;
+                entry.storeProducer = null;
+                if (currentCycle >= 0 && entry.baseReady && entry.storeReady && entry.readyCycle < 0) {
+                    entry.readyCycle = currentCycle;
+                }
             }
         }
     }
@@ -94,6 +104,7 @@ public class StoreBuffer {
         public String storeProducer;
         public boolean executing = false;
         public int remainingCycles = 0;
+        public int readyCycle = -1;  // cycle when this entry became ready (-1 means ready at issue or not yet)
 
         public StoreEntry(String tag, Instruction instruction) {
             this.tag = tag;
@@ -103,6 +114,21 @@ public class StoreBuffer {
         public boolean isReady() {
             return baseReady && storeReady && !executing;
         }
+        
+        /**
+         * Check if the entry is ready to be dispatched in the given cycle.
+         * An entry is ready for dispatch only if:
+         * 1. Both base and store operands are ready
+         * 2. It's not already executing
+         * 3. Either it was issued with operands ready (readyCycle < 0)
+         *    OR it received operands from CDB in a previous cycle (currentCycle > readyCycle)
+         */
+        public boolean isReadyForDispatch(int currentCycle) {
+            if (!baseReady || !storeReady || executing) {
+                return false;
+            }
+            return readyCycle < 0 || currentCycle > readyCycle;
+        }
 
         public int computeAddress() {
             int offset = instruction.getOffset() != null ? instruction.getOffset() : 0;
@@ -111,7 +137,7 @@ public class StoreBuffer {
 
         @Override
         public String toString() {
-            return tag + " " + instruction. getOpcode() + " baseReady=" + baseReady + 
+            return tag + " " + instruction.getOpcode() + " baseReady=" + baseReady + 
                    " storeReady=" + storeReady + " executing=" + executing + 
                    " remaining=" + remainingCycles;
         }
