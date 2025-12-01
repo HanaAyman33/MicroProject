@@ -51,8 +51,9 @@ public class RealReservationStations implements ReservationStations {
                 break;
         }
         
+        // Create entry with instruction reference
         ReservationStationEntry entry = new ReservationStationEntry(
-            tag, type, instr. getOpcode(), instr.getDest()
+            tag, type, instr. getOpcode(), instr.getDest(), instr
         );
 
         // Read operands from register file
@@ -62,7 +63,10 @@ public class RealReservationStations implements ReservationStations {
         if (src1 != null) {
             String producer = regFile.getProducer(src1);
             if (producer == null) {
-                entry.setVj(regFile.getValue(src1));
+                Double value = regFile.getValue(src1);
+                if (value != null) {
+                    entry.setVj(value);
+                }
             } else {
                 entry.setQj(producer);
             }
@@ -75,7 +79,10 @@ public class RealReservationStations implements ReservationStations {
             } else {
                 String producer = regFile.getProducer(src2);
                 if (producer == null) {
-                    entry.setVk(regFile.getValue(src2));
+                    Double value = regFile.getValue(src2);
+                    if (value != null) {
+                        entry.setVk(value);
+                    }
                 } else {
                     entry.setQk(producer);
                 }
@@ -161,3 +168,4 @@ public class RealReservationStations implements ReservationStations {
         return lastAllocatedTag;
     }
 }
+ 

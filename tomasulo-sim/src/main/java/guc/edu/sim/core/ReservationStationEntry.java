@@ -8,16 +8,19 @@ package guc.edu.sim.core;
  */
 public class ReservationStationEntry {
     private final String id;              // unique tag, e.g., "RS1", "RS2" or the ROB tag
-    private final StationType type;
-    private final String opcode;          // e.g., "ADD.D", "LW", etc.
+    private StationType type;
+    private String opcode;          // e.g., "ADD.D", "LW", etc.
     private Object Vj;                    // value of source j if ready
     private Object Vk;                    // value of source k if ready
     private String Qj;                    // tag of producer for j if not ready
     private String Qk;                    // tag of producer for k if not ready
     private String destination;           // register or ROB tag to write result to
     private boolean executing;            // execution started (on an execution unit)
+    private int executionCycles = 0;      // how many cycles this has been executing
+    private boolean completed = false;    // whether execution has completed
     private Object result;                // computed result after execution
     private int readyCycle = -1;          // cycle when this entry became ready (-1 means never/not yet)
+    private Instruction instruction;      // Reference to the instruction
 
     public ReservationStationEntry(String id, StationType type, String opcode, String destination) {
         this.id = id;
@@ -26,12 +29,39 @@ public class ReservationStationEntry {
         this.destination = destination;
         this.executing = false;
         this.readyCycle = -1;
+        this.executionCycles = 0;
+        this.completed = false;
+    }
+
+    // New constructor with Instruction parameter
+    public ReservationStationEntry(String id, StationType type, String opcode, String destination, Instruction instruction) {
+        this.id = id;
+        this.type = type;
+        this.opcode = opcode;
+        this.destination = destination;
+        this.instruction = instruction;
+        this.executing = false;
+        this.readyCycle = -1;
+        this.executionCycles = 0;
+        this.completed = false;
     }
 
     public String getId() { return id; }
     public StationType getType() { return type; }
     public String getOpcode() { return opcode; }
     public String getDestination() { return destination; }
+    public Instruction getInstruction() { return instruction; }
+    
+    // Added setter methods
+    public void setType(StationType type) { this.type = type; }
+    public void setOpcode(String opcode) { this.opcode = opcode; }
+    public void setDestination(String destination) { this.destination = destination; }
+    
+    public void setInstruction(Instruction instruction) { 
+        this.instruction = instruction; 
+        System.out.println("[DEBUG] Set instruction for " + id + ": " + 
+                          (instruction != null ? instruction.getOpcode() : "null"));
+    }
 
     public Object getVj() { return Vj; }
     public void setVj(Object vj) { Vj = vj; Qj = null; }
@@ -73,36 +103,68 @@ public class ReservationStationEntry {
     public void setReadyCycle(int cycle) { this.readyCycle = cycle; }
 
     public boolean isReady() {
-        // For load/store semantics you might only need one operand; that check can be refined externally.
-        return Qj == null && Qk == null && !executing;
+        return Qj == null && Qk == null && !executing && !completed;
     }
     
     /**
      * Check if the entry is ready to be dispatched in the given cycle.
      * An entry is ready for dispatch only if:
      * 1. All operands are available (Qj == null && Qk == null)
-     * 2. It's not already executing
+     * 2. It's not already executing or completed
      * 3. Either it was issued with all operands ready (readyCycle < 0)
      *    OR it received operands from CDB in a previous cycle (currentCycle > readyCycle)
      */
     public boolean isReadyForDispatch(int currentCycle) {
-        if (Qj != null || Qk != null || executing) {
+        if (Qj != null || Qk != null || executing || completed) {
             return false;
         }
-        // If readyCycle < 0, operands were ready at issue time (not from CDB), so dispatch immediately
-        // If readyCycle >= 0, operands came from CDB in that cycle, so must wait until next cycle
         return readyCycle < 0 || currentCycle > readyCycle;
     }
 
     public boolean isExecuting() { return executing; }
-    public void markExecuting() { executing = true; }
+    
+    public boolean hasExecutedForCycles() {
+        return executionCycles > 0;
+    }
+    
+    public int getExecutionCycles() {
+        return executionCycles;
+    }
+    
+    public void setExecutionCycles(int cycles) {
+        this.executionCycles = cycles;
+    }
+    
+    public void markExecuting() { 
+        System.out.println("[DEBUG] markExecuting for " + id);
+        executing = true;
+        executionCycles = 0;
+    }
+    
+    public void advanceExecution() {
+        if (executing) {
+            executionCycles++;
+            System.out.println("[DEBUG] advanceExecution for " + id + " (now cycles=" + executionCycles + ")");
+        }
+    }
+    
+    public void markCompleted() {
+        System.out.println("[DEBUG] markCompleted for " + id);
+        executing = false;
+        completed = true;
+    }
+    
+    public boolean isCompleted() {
+        return completed;
+    }
 
     public void setResult(Object result) { this.result = result; }
     public Object getResult() { return result; }
 
     @Override
     public String toString() {
-        return String.format("%s(%s) op=%s Vj=%s Vk=%s Qj=%s Qk=%s dest=%s exec=%b",
-                id, type, opcode, Vj, Vk, Qj, Qk, destination, executing);
+        return String.format("%s(%s) op=%s Vj=%s Vk=%s Qj=%s Qk=%s dest=%s exec=%b cycles=%d completed=%b",
+                id, type, opcode, Vj, Vk, Qj, Qk, destination, executing, executionCycles, completed);
     }
 }
+ 

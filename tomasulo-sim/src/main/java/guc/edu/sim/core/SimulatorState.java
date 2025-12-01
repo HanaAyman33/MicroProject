@@ -36,7 +36,7 @@ public class SimulatorState {
     private int cacheMissPenalty = 10;
     private int fpAddLatency = 3;
     private int fpMulLatency = 10;
-    private int fpDivLatency = 40;  // ADDED: Missing division latency field
+    private int fpDivLatency = 40;
     private int intLatency = 1;
     private int loadLatency = 2;
     private int storeLatency = 2;
@@ -56,7 +56,13 @@ public class SimulatorState {
     private final Map<String, IssuedInstructionInfo> tagToInstruction = new HashMap<>();
     private int branchTagCounter = 0;
     private String activeBranchTag;
-    private int currentBroadcastCycle = -1;  // Track cycle during CDB broadcast for readyCycle timing
+    private int currentBroadcastCycle = -1;
+    
+    // DEBUG: Track specific instructions
+    private static final boolean DEBUG = true;
+    private void debug(String msg) {
+        if (DEBUG) System.out.println("[DEBUG] " + msg);
+    }
 
     public void loadProgramLines(List<String> lines) {
         ProgramLoader loader = new ProgramLoader();
@@ -70,11 +76,11 @@ public class SimulatorState {
         // Create components
         latencyConfig = new LatencyConfig();
         latencyConfig.setLatency(StationType.FP_ADD, fpAddLatency);
-        latencyConfig.setLatency(StationType. FP_MUL, fpMulLatency);
-        latencyConfig.setDivisionLatency(fpDivLatency);  // FIXED: Apply division latency
-        latencyConfig.setLatency(StationType. INTEGER, intLatency);
+        latencyConfig.setLatency(StationType.FP_MUL, fpMulLatency);
+        latencyConfig.setDivisionLatency(fpDivLatency);
+        latencyConfig.setLatency(StationType.INTEGER, intLatency);
         latencyConfig.setLatency(StationType.LOAD, loadLatency);
-        latencyConfig. setLatency(StationType. STORE, storeLatency);
+        latencyConfig.setLatency(StationType.STORE, storeLatency);
         
         regFile = new RegisterFile();
         memory = new Memory();
@@ -82,7 +88,6 @@ public class SimulatorState {
         
         rs = new RealReservationStations(fpAddSize, fpMulSize, intSize, regFile);
         
-        // Create separate load and store buffers
         loadBuffer = new LoadBuffer(loadBufferSize, regFile, memory, cache);
         storeBuffer = new StoreBuffer(storeBufferSize, regFile, memory, cache);
         
@@ -102,8 +107,7 @@ public class SimulatorState {
             storeBuffer.broadcastResult(tag, result, currentBroadcastCycle);
             branchUnit.broadcastResult(tag, result, currentBroadcastCycle);
             
-            // Update register file
-            for (String reg : regFile.getAllProducers(). keySet()) {
+            for (String reg : regFile.getAllProducers().keySet()) {
                 if (tag.equals(regFile.getProducer(reg))) {
                     regFile.setValue(reg, result);
                     regFile.clearProducer(reg);
@@ -113,7 +117,6 @@ public class SimulatorState {
         
         issueUnit = new IssueUnit(program);
         
-        // Initialize instruction statuses
         instructionStatuses.clear();
         for (int i = 0; i < program.size(); i++) {
             instructionStatuses.add(new InstructionStatus());
@@ -126,8 +129,7 @@ public class SimulatorState {
         branchTagCounter = 0;
         activeBranchTag = null;
 
-        // Reapply user-specified initial values if present
-        if (! initialRegValues.isEmpty()) {
+        if (!initialRegValues.isEmpty()) {
             regFile.loadInitialValues(initialRegValues);
             System.out.println("[Init] Re-applied register values: " + initialRegValues);
         }
@@ -136,7 +138,7 @@ public class SimulatorState {
             System.out.println("[Init] Re-applied memory values: " + initialMemValues);
         }
         
-        SimulationClock. reset();
+        SimulationClock.reset();
         this.lastIssuedIndex = -1;
         
         System.out.println("========== Initialization Complete ==========\n");
@@ -149,110 +151,182 @@ public class SimulatorState {
     public boolean step() {
         if (program == null || issueUnit == null) return false;
         
-        int currentCycle = SimulationClock. getCycle() + 1;
+        int currentCycle = SimulationClock.getCycle() + 1;
         System.out.println("\n========== Cycle " + currentCycle + " ==========");
+        
+        debug("=== CYCLE " + currentCycle + " START ===");
+        debug("pendingResults at start: " + pendingResults.size());
+        for (PendingResult pr : pendingResults) {
+            debug("  - " + pr.tag + " (broadcast=" + pr.broadcast + ")");
+        }
 
         // Phase 0: Write-back any results that finished in the previous cycle
-        // Set the broadcast cycle so CDB listeners can record when operands became ready.
-        // Only one value may ride the CDB per cycle; extra results stay queued.
         currentBroadcastCycle = currentCycle;
-        if (! pendingResults.isEmpty()) {
+        if (!pendingResults.isEmpty()) {
+            debug("PHASE 0: Processing " + pendingResults.size() + " pending results");
             PendingResult broadcastThisCycle = null;
             int deferredCount = 0;
             Iterator<PendingResult> iterator = pendingResults.iterator();
             
             while (iterator.hasNext()) {
                 PendingResult pr = iterator.next();
+                debug("Processing: " + pr.tag + " (broadcast=" + pr.broadcast + ")");
                 
-                // Stores (or any op that doesn't broadcast) always complete immediately
                 if (!pr.broadcast) {
                     iterator.remove();
                     markInstructionWriteBack(pr.tag, currentCycle);
+                    debug("Non-broadcast write-back for " + pr.tag);
                     continue;
                 }
                 
-                // First broadcaster gets the bus; others wait in the queue
                 if (broadcastThisCycle == null) {
                     broadcastThisCycle = pr;
                     iterator.remove();
+                    markInstructionWriteBack(pr.tag, currentCycle); // FIXED: Mark write-back here too
+                    debug("Selected for CDB broadcast: " + pr.tag);
                 } else {
                     deferredCount++;
+                    debug("Deferred (CDB busy): " + pr.tag);
                 }
             }
             
             if (broadcastThisCycle != null) {
+                debug("CDB Broadcasting: " + broadcastThisCycle.tag + " = " + broadcastThisCycle.result);
                 cdb.broadcast(broadcastThisCycle.tag, broadcastThisCycle.result);
-                markInstructionWriteBack(broadcastThisCycle.tag, currentCycle);
+                debug("Write-back already marked for " + broadcastThisCycle.tag);
+                
                 if (deferredCount > 0) {
                     System.out.println("[CDB] Bus busy; deferred " + deferredCount + " result(s) to later cycle(s)");
                 }
             }
+        } else {
+            debug("No pending results to write back");
         }
         
-        // Phase 1: Tick execution units FIRST (before dispatching new ones)
+        // Phase 1: Tick execution units (instructions that were already executing)
+        debug("PHASE 1: Checking dispatcher for completed instructions");
         List<ReservationStationEntry> finishedRS = dispatcher.tickUnits();
+        debug("Dispatcher returned " + finishedRS.size() + " finished entries");
         for (ReservationStationEntry entry : finishedRS) {
-            System.out.println("[WriteBack] " + entry.getId() + " completed execution");
+            debug("Finished: " + entry.getId() + " op=" + entry.getOpcode());
             double result = (entry.getResult() instanceof Double) ? 
                 (Double) entry.getResult() : 0.0;
 
-            // Record exec end as the *last cycle of execution*. 
             markInstructionExecEnd(entry.getId(), currentCycle);
+            debug("Marked exec end for " + entry.getId());
 
-            // Defer broadcast/write-back to the next simulator step so that
-            // dependent instructions only see the value starting in the
-            // *next* cycle.  The reservation-station slot will be freed when
-            // the result is broadcast (see RealReservationStations). 
-            pendingResults.add(new PendingResult(entry. getId(), result, true));
+            pendingResults.add(new PendingResult(entry.getId(), result, true));
+            debug("Added to pendingResults: " + entry.getId() + " (size now=" + pendingResults.size() + ")");
         }
         
-        // Phase 2: Execute LOAD operations
+        // Phase 2: Track previously executing instructions
+        Set<String> previouslyExecuting = new HashSet<>();
+        for (ReservationStationEntry entry : rs.getStations()) {
+            if (entry.isExecuting()) {
+                previouslyExecuting.add(entry.getId());
+                debug("Already executing: " + entry.getId() + " (hasExecutedForCycles=" + entry.hasExecutedForCycles() + ")");
+            }
+        }
+        
+        // Phase 3: Dispatch ready instructions to execution units
+        debug("PHASE 3: Dispatching ready instructions");
+        for (ReservationStationEntry entry : rs.getStations()) {
+            if (entry.isReadyForDispatch(currentCycle) && !entry.isExecuting()) {
+                dispatcher.addEntry(entry);
+                debug("Dispatched to execution unit: " + entry.getId());
+            }
+        }
+        
+        dispatcher.dispatch();
+        
+        // Phase 4: Check for newly started latency-1 instructions
+        debug("PHASE 4: Checking for newly started instructions (latency-1 detection)");
+        boolean foundLatency1 = false;
+        for (ReservationStationEntry entry : rs.getStations()) {
+            if (entry.isExecuting() && !previouslyExecuting.contains(entry.getId())) {
+                debug("Newly started executing: " + entry.getId() + " op=" + entry.getOpcode());
+                markInstructionExecStart(entry.getId(), currentCycle);
+                debug("Marked exec start for " + entry.getId());
+                
+                // Check if it's a latency-1 instruction
+                int latency = getInstructionLatency(entry);
+                debug("Latency for " + entry.getId() + " = " + latency);
+                
+                if (latency == 1) {
+                    foundLatency1 = true;
+                    debug("LATENCY-1 DETECTED for " + entry.getId());
+                    markInstructionExecEnd(entry.getId(), currentCycle);
+                    debug("Marked exec end for " + entry.getId() + " (same cycle)");
+                    
+                    double result = computeResult(entry);
+                    debug("Computed result for " + entry.getId() + " = " + result);
+                    
+                    pendingResults.add(new PendingResult(entry.getId(), result, true));
+                    debug("Added to pendingResults: " + entry.getId() + " (size now=" + pendingResults.size() + ")");
+                    
+                    entry.markCompleted();
+                    debug("Marked as completed: " + entry.getId());
+                }
+            }
+        }
+        if (!foundLatency1) {
+            debug("No latency-1 instructions detected in this cycle");
+        }
+        
+        // Phase 5: Tick LOAD operations that are already executing
         List<LoadBuffer.LoadEntry> completedLoads = new ArrayList<>();
         for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
             if (loadEntry.executing) {
                 loadEntry.remainingCycles--;
-                System.out.println("[LoadBuffer] " + loadEntry.tag + " executing...  " + 
-                                 loadEntry.remainingCycles + " cycles remaining");
                 
-                if (loadEntry.remainingCycles <= 0) {
+                if (loadEntry.remainingCycles == 0) {
                     System.out.println("[LoadBuffer] " + loadEntry.tag + " COMPLETED with value " + loadEntry.result);
                     markInstructionExecEnd(loadEntry.tag, currentCycle);
                     pendingResults.add(new PendingResult(loadEntry.tag, loadEntry.result, true));
                     completedLoads.add(loadEntry);
                 }
-            } else if (loadEntry.isReadyForDispatch(currentCycle)) {
+            }
+        }
+        for (LoadBuffer.LoadEntry entry : completedLoads) {
+            loadBuffer.removeEntry(entry);
+        }
+
+        // Phase 6: Tick STORE operations that are already executing
+        List<StoreBuffer.StoreEntry> completedStores = new ArrayList<>();
+        for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
+            if (storeEntry.executing) {
+                storeEntry.remainingCycles--;
+                
+                if (storeEntry.remainingCycles == 0) {
+                    System.out.println("[StoreBuffer] " + storeEntry.tag + " COMPLETED");
+                    markInstructionExecEnd(storeEntry.tag, currentCycle);
+                    pendingResults.add(new PendingResult(storeEntry.tag, storeEntry.storeValue, false));
+                    completedStores.add(storeEntry);
+                }
+            }
+        }
+        for (StoreBuffer.StoreEntry entry : completedStores) {
+            storeBuffer.removeEntry(entry);
+        }
+        
+        // Phase 7: Start NEW load operations that are ready
+        for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
+            if (!loadEntry.executing && loadEntry.isReadyForDispatch(currentCycle)) {
                 loadEntry.executing = true;
                 int addr = loadEntry.computeAddress();
 
                 Cache.CacheAccessResult result = cache.access(addr, memory);
                 loadEntry.remainingCycles = result.latency;
                 loadEntry.result = loadFromMemory(loadEntry.instruction, addr);
-                System.out.println("[LoadBuffer] " + loadEntry. tag + " LOADING from address " + addr +
+                System.out.println("[LoadBuffer] " + loadEntry.tag + " LOADING from address " + addr +
                                  " (latency=" + result.latency + " cycles)");
                 markInstructionExecStart(loadEntry.tag, currentCycle);
             }
         }
-        
-        // Remove completed load entries
-        for (LoadBuffer.LoadEntry entry : completedLoads) {
-            loadBuffer.removeEntry(entry);
-        }
-        
-        // Phase 3: Execute STORE operations
-        List<StoreBuffer. StoreEntry> completedStores = new ArrayList<>();
+
+        // Phase 8: Start NEW store operations that are ready
         for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
-            if (storeEntry.executing) {
-                storeEntry.remainingCycles--;
-                System.out.println("[StoreBuffer] " + storeEntry.tag + " executing...  " + 
-                                 storeEntry.remainingCycles + " cycles remaining");
-                
-                if (storeEntry.remainingCycles <= 0) {
-                    System.out.println("[StoreBuffer] " + storeEntry.tag + " COMPLETED");
-                    markInstructionExecEnd(storeEntry.tag, currentCycle);
-                    pendingResults.add(new PendingResult(storeEntry. tag, storeEntry.storeValue, false));
-                    completedStores.add(storeEntry);
-                }
-            } else if (storeEntry.isReadyForDispatch(currentCycle)) {
+            if (!storeEntry.executing && storeEntry.isReadyForDispatch(currentCycle)) {
                 storeEntry.executing = true;
                 int addr = storeEntry.computeAddress();
 
@@ -266,29 +340,7 @@ public class SimulatorState {
             }
         }
         
-        // Remove completed store entries
-        for (StoreBuffer.StoreEntry entry : completedStores) {
-            storeBuffer.removeEntry(entry);
-        }
-        
-        // Phase 4: Dispatch ready instructions to execution units (AFTER ticking)
-        // Only dispatch entries that are ready and received operands before this cycle
-        for (ReservationStationEntry entry : rs.getStations()) {
-            if (entry.isReadyForDispatch(currentCycle) && !entry.isExecuting()) {
-                dispatcher.addEntry(entry);
-                System.out.println("[Dispatch] Added " + entry.getId() + " to dispatcher queue");
-            }
-        }
-        dispatcher.dispatch();
-        
-        // Mark execution start for newly dispatched instructions
-        for (ReservationStationEntry entry : rs.getStations()) {
-            if (entry.isExecuting()) {
-                markInstructionExecStart(entry.getId(), currentCycle);
-            }
-        }
-        
-        // Phase 5: Resolve branches
+        // Phase 9: Resolve branches
         branchUnit.tryResolve(currentCycle);
         if (branchUnit.hasResolvedBranch()) {
             if (activeBranchTag != null) {
@@ -298,13 +350,13 @@ public class SimulatorState {
             }
             if (branchUnit.shouldFlushQueue()) {
                 int targetPc = branchUnit.getResolvedTargetPc();
-                System. out.println("[Branch] Taking branch to PC=" + targetPc);
+                System.out.println("[Branch] Taking branch to PC=" + targetPc);
                 issueUnit.jumpTo(targetPc);
             }
             branchUnit.clear();
         }
         
-        // Phase 6: Issue new instruction
+        // Phase 10: Issue new instruction
         int prevPc = issueUnit.getPc();
         boolean issued = false;
         String assignedTag = null;
@@ -323,6 +375,7 @@ public class SimulatorState {
                         rs.accept(instr, null);
                         assignedTag = rs.getLastAllocatedTag();
                         System.out.println("[Issue] Issued to RS: " + instr.getOpcode() + " -> " + assignedTag);
+                        debug("Instruction issued: " + instr.getOpcode() + " tag=" + assignedTag);
                     } else {
                         structuralHazards++;
                     }
@@ -334,7 +387,7 @@ public class SimulatorState {
                         hazardSnapshot = detectHazards(instr);
                         loadBuffer.accept(instr);
                         assignedTag = loadBuffer.getLastAllocatedTag();
-                        System.out. println("[Issue] Issued to Load Buffer: " + instr.getOpcode() + " -> " + assignedTag);
+                        System.out.println("[Issue] Issued to Load Buffer: " + instr.getOpcode() + " -> " + assignedTag);
                     } else {
                         structuralHazards++;
                     }
@@ -360,21 +413,22 @@ public class SimulatorState {
                         assignedTag = "BR" + (++branchTagCounter);
                         activeBranchTag = assignedTag;
                         markInstructionExecStart(assignedTag, currentCycle);
-                        System.out. println("[Issue] Issued to Branch Unit: " + instr.getOpcode());
+                        System.out.println("[Issue] Issued to Branch Unit: " + instr.getOpcode());
                     } else {
                         structuralHazards++;
                     }
                     break;
                 case UNKNOWN:
                 default:
-                    System.out. println("[Issue] Unsupported instruction type: " + instr.getOpcode());
+                    System.out.println("[Issue] Unsupported instruction type: " + instr.getOpcode());
                     break;
             }
             
             if (canIssue) {
                 instr.setIssueCycle(currentCycle);
                 instructionStatuses.get(prevPc).issueCycle = currentCycle;
-                instructionStatuses.get(prevPc).tag = assignedTag;
+                instructionStatuses.get(prevPc).tag = assignedTag; // FIXED: Store the tag
+                debug("Stored tag " + assignedTag + " for instruction at index " + prevPc);
                 issueUnit.jumpTo(prevPc + 1);
                 recordInstructionMix(instr);
                 if (hazardSnapshot != null) {
@@ -387,12 +441,18 @@ public class SimulatorState {
                 lastIssuedIndex = prevPc;
                 System.out.println("[Issue] PC advanced from " + prevPc + " to " + issueUnit.getPc());
             } else {
-                System.out. println("[Issue] STALLED - No free resources for " + instr.getOpcode());
+                System.out.println("[Issue] STALLED - No free resources for " + instr.getOpcode());
             }
         }
         
         // Advance clock
-        SimulationClock. nextCycle();
+        SimulationClock.nextCycle();
+        
+        debug("=== END CYCLE " + currentCycle + " ===");
+        debug("pendingResults at end: " + pendingResults.size());
+        for (PendingResult pr : pendingResults) {
+            debug("  - " + pr.tag + " (broadcast=" + pr.broadcast + ")");
+        }
         
         // Print status
         printStatus();
@@ -400,40 +460,133 @@ public class SimulatorState {
         return issued;
     }
     
+    // Helper method to get instruction latency
+    private int getInstructionLatency(ReservationStationEntry entry) {
+        if (entry == null) {
+            debug("getInstructionLatency: entry is null");
+            return 1;
+        }
+        
+        Instruction instr = entry.getInstruction();
+        if (instr == null) {
+            debug("getInstructionLatency: instruction is null for entry " + entry.getId());
+            debug("Entry opcode: " + entry.getOpcode());
+            return 1;
+        }
+        
+        String opcode = instr.getOpcode().toUpperCase();
+        debug("getInstructionLatency for " + opcode + " type=" + instr.getType());
+        
+        switch (instr.getType()) {
+            case ALU_INT:
+                debug("ALU_INT latency = " + intLatency);
+                return intLatency;  // Should be 1
+            case ALU_FP:
+                if (opcode.contains("ADD") || opcode.contains("SUB")) {
+                    debug("FP ADD/SUB latency = " + fpAddLatency);
+                    return fpAddLatency;
+                } else if (opcode.contains("MUL")) {
+                    debug("FP MUL latency = " + fpMulLatency);
+                    return fpMulLatency;
+                } else if (opcode.contains("DIV")) {
+                    debug("FP DIV latency = " + fpDivLatency);
+                    return fpDivLatency;
+                }
+                debug("Unknown FP opcode, default latency = 1");
+                return 1;
+            case LOAD:
+                debug("LOAD latency = " + loadLatency);
+                return loadLatency;
+            case STORE:
+                debug("STORE latency = " + storeLatency);
+                return storeLatency;
+            case BRANCH:
+                debug("BRANCH latency = " + branchLatency);
+                return branchLatency;
+            default:
+                debug("Unknown type, default latency = 1");
+                return 1;
+        }
+    }
+    
+    // Helper method to compute instruction result
+    private double computeResult(ReservationStationEntry entry) {
+        debug("computeResult for " + entry.getId() + " op=" + entry.getOpcode());
+        
+        if (entry.getVj() != null && entry.getVk() != null) {
+            try {
+                double vj = Double.parseDouble(entry.getVj().toString());
+                double vk = Double.parseDouble(entry.getVk().toString());
+                
+                String op = entry.getOpcode().toUpperCase();
+                debug("Operands: vj=" + vj + ", vk=" + vk);
+                
+                if (op.contains("ADD")) {
+                    double result = vj + vk;
+                    debug("ADD result: " + result);
+                    return result;
+                } else if (op.contains("SUB")) {
+                    double result = vj - vk;
+                    debug("SUB result: " + result);
+                    return result;
+                }
+            } catch (NumberFormatException e) {
+                debug("Number format error: " + e.getMessage());
+            }
+        } else {
+            debug("One or both operands are null: vj=" + entry.getVj() + ", vk=" + entry.getVk());
+        }
+        
+        debug("Default result = 0.0");
+        return 0.0;
+    }
+    
     private void markInstructionExecStart(String tag, int cycle) {
+        debug("markInstructionExecStart: tag=" + tag + " cycle=" + cycle);
         for (int i = 0; i < instructionStatuses.size(); i++) {
             InstructionStatus status = instructionStatuses.get(i);
             if (status.tag != null && status.tag.equals(tag) && status.execStartCycle == -1) {
                 status.execStartCycle = cycle;
+                debug("Found instruction at index " + i + ", set execStartCycle=" + cycle);
                 break;
             }
         }
     }
     
     private void markInstructionExecEnd(String tag, int cycle) {
-        for (int i = 0; i < instructionStatuses. size(); i++) {
+        debug("markInstructionExecEnd: tag=" + tag + " cycle=" + cycle);
+        for (int i = 0; i < instructionStatuses.size(); i++) {
             InstructionStatus status = instructionStatuses.get(i);
             if (status.tag != null && status.tag.equals(tag) && status.execEndCycle == -1) {
-                status. execEndCycle = cycle;
+                status.execEndCycle = cycle;
+                debug("Found instruction at index " + i + ", set execEndCycle=" + cycle);
                 break;
             }
         }
     }
     
     private void markInstructionWriteBack(String tag, int cycle) {
+        debug("markInstructionWriteBack: tag=" + tag + " cycle=" + cycle);
+        debug("Looking through " + instructionStatuses.size() + " instruction statuses");
+        boolean found = false;
         for (int i = 0; i < instructionStatuses.size(); i++) {
             InstructionStatus status = instructionStatuses.get(i);
             if (status.tag != null && status.tag.equals(tag) && status.writeBackCycle == -1) {
                 status.writeBackCycle = cycle;
+                debug("FOUND! Set writeBackCycle=" + cycle + " for instruction at index " + i);
+                found = true;
                 break;
             }
+        }
+        if (!found) {
+            debug("WARNING: Could not find instruction with tag " + tag + " for write-back!");
         }
         completeIssuedInstruction(tag);
     }
     
     private void printStatus() {
         System.out.println("\n--- Current State ---");
-        System.out. println("Reservation Stations: " + rs.getStations(). size());
+        System.out.println("Reservation Stations: " + rs.getStations().size());
         for (ReservationStationEntry entry : rs.getStations()) {
             System.out.println("  " + entry);
         }
@@ -444,20 +597,20 @@ public class SimulatorState {
         }
         
         System.out.println("Store Buffer: " + storeBuffer.getBuffer().size());
-        for (StoreBuffer.StoreEntry entry : storeBuffer. getBuffer()) {
-            System. out.println("  " + entry);
+        for (StoreBuffer.StoreEntry entry : storeBuffer.getBuffer()) {
+            System.out.println("  " + entry);
         }
         
-        System.out.println("Cache Hits: " + cache.getHits() + ", Misses: " + cache. getMisses());
-        System. out.println("--------------------\n");
+        System.out.println("Cache Hits: " + cache.getHits() + ", Misses: " + cache.getMisses());
+        System.out.println("--------------------\n");
     }
 
     private double loadFromMemory(Instruction instr, int address) {
-        String op = instr.getOpcode(). toUpperCase();
+        String op = instr.getOpcode().toUpperCase();
         switch (op) {
             case "LW":
                 return memory.loadWord(address);
-            case "L. S":
+            case "L.S":
                 return memory.loadFloat(address);
             case "LD":
             case "L.D":
@@ -470,13 +623,13 @@ public class SimulatorState {
         String op = instr.getOpcode().toUpperCase();
         switch (op) {
             case "SW":
-                memory. storeWord(address, (int) value);
+                memory.storeWord(address, (int) value);
                 break;
             case "S.S":
                 memory.storeFloat(address, (float) value);
                 break;
             case "SD":
-            case "S. D":
+            case "S.D":
             default:
                 memory.storeDouble(address, value);
                 break;
@@ -522,30 +675,28 @@ public class SimulatorState {
         this.cacheHitLatency = hitLat;
         this.cacheMissPenalty = missPen;
 
-        // Rebuild the simulator with the new configuration if a program is loaded
         if (program != null) {
             initializeSimulator();
         }
     }
 
-    // FIXED: Corrected method signature and added fpDivLatency parameter
     public void setConfigurationWithLatencies(int fpAdd, int fpMul, int intAlu,
                                               int loadBufSize, int storeBufSize,
                                               int cacheSz, int blockSz, int hitLat, int missPen,
                                               int fpAddLat, int fpMulLat, int fpDivLat, int intLat,
                                               int loadLat, int storeLat, int branchLat) {
         this.fpAddSize = fpAdd;
-        this. fpMulSize = fpMul;
+        this.fpMulSize = fpMul;
         this.intSize = intAlu;
-        this. loadBufferSize = loadBufSize;
+        this.loadBufferSize = loadBufSize;
         this.storeBufferSize = storeBufSize;
         this.cacheSize = cacheSz;
         this.blockSize = blockSz;
         this.cacheHitLatency = hitLat;
         this.cacheMissPenalty = missPen;
         this.fpAddLatency = fpAddLat;
-        this. fpMulLatency = fpMulLat;
-        this. fpDivLatency = fpDivLat;  // FIXED: Now properly storing division latency
+        this.fpMulLatency = fpMulLat;
+        this.fpDivLatency = fpDivLat;
         this.intLatency = intLat;
         this.loadLatency = loadLat;
         this.storeLatency = storeLat;
@@ -632,9 +783,9 @@ public class SimulatorState {
 
         for (IssuedInstructionInfo info : inFlight) {
             if (info.completed) continue;
-            if (! raw && info.dest != null) {
+            if (!raw && info.dest != null) {
                 for (String src : sources) {
-                    if (src != null && src.equals(info. dest)) {
+                    if (src != null && src.equals(info.dest)) {
                         raw = true;
                         break;
                     }
@@ -642,7 +793,7 @@ public class SimulatorState {
             }
             if (!war && dest != null) {
                 for (String src : info.sources) {
-                    if (dest. equals(src)) {
+                    if (dest.equals(src)) {
                         war = true;
                         break;
                     }
@@ -664,16 +815,16 @@ public class SimulatorState {
                 break;
             case STORE:
                 if (isRegister(instr.getSrc1())) sources.add(instr.getSrc1());
-                if (isRegister(instr. getBase())) sources.add(instr.getBase());
+                if (isRegister(instr.getBase())) sources.add(instr.getBase());
                 break;
             case ALU_FP:
             case ALU_INT:
-                if (isRegister(instr.getSrc1())) sources.add(instr. getSrc1());
-                if (isRegister(instr. getSrc2())) sources.add(instr.getSrc2());
+                if (isRegister(instr.getSrc1())) sources.add(instr.getSrc1());
+                if (isRegister(instr.getSrc2())) sources.add(instr.getSrc2());
                 break;
             case BRANCH:
-                if (isRegister(instr.getSrc1())) sources.add(instr. getSrc1());
-                if (isRegister(instr. getSrc2())) sources.add(instr.getSrc2());
+                if (isRegister(instr.getSrc1())) sources.add(instr.getSrc1());
+                if (isRegister(instr.getSrc2())) sources.add(instr.getSrc2());
                 break;
             default:
                 break;
@@ -683,7 +834,7 @@ public class SimulatorState {
 
     private String extractDestinationRegister(Instruction instr) {
         if (instr == null) return null;
-        switch (instr. getType()) {
+        switch (instr.getType()) {
             case LOAD:
             case ALU_FP:
             case ALU_INT:
@@ -695,7 +846,7 @@ public class SimulatorState {
 
     private boolean isRegister(String operand) {
         if (operand == null) return false;
-        return ! operand.matches("-?\\d+");
+        return !operand.matches("-?\\d+");
     }
 
     private static class IssuedInstructionInfo {
@@ -744,3 +895,4 @@ public class SimulatorState {
         }
     }
 }
+ 
