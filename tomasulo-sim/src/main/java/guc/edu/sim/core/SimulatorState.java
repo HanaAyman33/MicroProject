@@ -137,6 +137,25 @@ public class SimulatorState {
             memory.loadInitialData(initialMemValues);
             System.out.println("[Init] Re-applied memory values: " + initialMemValues);
         }
+        if (!initialMemValues.isEmpty()) {
+            memory.loadInitialData(initialMemValues);
+            System.out.println("[Init] Re-applied memory values: " + initialMemValues);
+            
+            // VERIFY: Check what's actually in memory
+            System.out.println("[DEBUG] Verifying memory contents:");
+            for (Integer addr : initialMemValues.keySet()) {
+                double value = memory.loadDouble(addr);
+                System.out.println("[DEBUG]   Memory[" + addr + "] = " + value);
+                
+                // Also check the bytes
+                System.out.println("[DEBUG]   Bytes at " + addr + ":");
+                for (int i = 0; i < 8; i++) {
+                    byte b = memory.loadByte(addr + i);
+                    System.out.println("[DEBUG]     [" + (addr + i) + "] = " + String.format("0x%02X", b & 0xFF));
+                }
+            }
+        }
+    
         
         SimulationClock.reset();
         this.lastIssuedIndex = -1;
@@ -157,7 +176,7 @@ public class SimulatorState {
         debug("=== CYCLE " + currentCycle + " START ===");
         debug("pendingResults at start: " + pendingResults.size());
         for (PendingResult pr : pendingResults) {
-            debug("  - " + pr.tag + " (broadcast=" + pr.broadcast + ")");
+            debug("  - " + pr.tag + " (broadcast=" + pr.broadcast + ", address=" + pr.memoryAddress + ")");
         }
 
         // Phase 0: Write-back any results that finished in the previous cycle
@@ -170,11 +189,19 @@ public class SimulatorState {
             
             while (iterator.hasNext()) {
                 PendingResult pr = iterator.next();
-                debug("Processing: " + pr.tag + " (broadcast=" + pr.broadcast + ")");
+                debug("Processing: " + pr.tag + " (broadcast=" + pr.broadcast + ", address=" + pr.memoryAddress + ")");
                 
                 if (!pr.broadcast) {
                     iterator.remove();
                     markInstructionWriteBack(pr.tag, currentCycle);
+                    
+                    // FIXED: Handle STORE cache update at write-back
+                    if (pr.memoryAddress != null) {
+                        cache.writeThrough(pr.memoryAddress, memory);
+                        System.out.println("[Cache] Completed STORE write-through at WRITE-BACK for " + 
+                                         pr.tag + " at address " + pr.memoryAddress);
+                    }
+                    
                     debug("Non-broadcast write-back for " + pr.tag);
                     continue;
                 }
@@ -182,7 +209,7 @@ public class SimulatorState {
                 if (broadcastThisCycle == null) {
                     broadcastThisCycle = pr;
                     iterator.remove();
-                    markInstructionWriteBack(pr.tag, currentCycle); // FIXED: Mark write-back here too
+                    markInstructionWriteBack(pr.tag, currentCycle);
                     debug("Selected for CDB broadcast: " + pr.tag);
                 } else {
                     deferredCount++;
@@ -194,6 +221,14 @@ public class SimulatorState {
                 debug("CDB Broadcasting: " + broadcastThisCycle.tag + " = " + broadcastThisCycle.result);
                 cdb.broadcast(broadcastThisCycle.tag, broadcastThisCycle.result);
                 debug("Write-back already marked for " + broadcastThisCycle.tag);
+                
+                // FIXED: Complete cache fill at WRITE-BACK for LOAD instructions
+                if (broadcastThisCycle.memoryAddress != null) {
+                    cache.completeFill(broadcastThisCycle.memoryAddress, memory);
+                    System.out.println("[Cache] Completed LOAD fill at WRITE-BACK for " + 
+                                     broadcastThisCycle.tag + " at address " + 
+                                     broadcastThisCycle.memoryAddress);
+                }
                 
                 if (deferredCount > 0) {
                     System.out.println("[CDB] Bus busy; deferred " + deferredCount + " result(s) to later cycle(s)");
@@ -215,7 +250,7 @@ public class SimulatorState {
             markInstructionExecEnd(entry.getId(), currentCycle);
             debug("Marked exec end for " + entry.getId());
 
-            pendingResults.add(new PendingResult(entry.getId(), result, true));
+            pendingResults.add(new PendingResult(entry.getId(), result, true, null));
             debug("Added to pendingResults: " + entry.getId() + " (size now=" + pendingResults.size() + ")");
         }
         
@@ -261,7 +296,7 @@ public class SimulatorState {
                     double result = computeResult(entry);
                     debug("Computed result for " + entry.getId() + " = " + result);
                     
-                    pendingResults.add(new PendingResult(entry.getId(), result, true));
+                    pendingResults.add(new PendingResult(entry.getId(), result, true, null));
                     debug("Added to pendingResults: " + entry.getId() + " (size now=" + pendingResults.size() + ")");
                     
                     entry.markCompleted();
@@ -280,9 +315,27 @@ public class SimulatorState {
                 loadEntry.remainingCycles--;
                 
                 if (loadEntry.remainingCycles == 0) {
+                    int addr = loadEntry.computeAddress();
+                    
+                    System.out.println("[DEBUG] ========== LOAD COMPLETING ==========");
+                    System.out.println("[DEBUG] Load address: " + addr);
+                    
+                    // Check what's in memory BEFORE cache fill
+                    System.out.println("[DEBUG] Memory contents:");
+                    for (int i = 0; i < 8; i++) {
+                        byte b = memory.loadByte(addr + i);
+                        System.out.println("[DEBUG]   Memory[" + (addr + i) + "] = " + String.format("0x%02X", b & 0xFF));
+                    }
+                    
+                    System.out.println("[DEBUG] ====================================");
+                    
+                    // FIXED: Don't call cache.completeFill here - it will be called at write-back
+                    
                     System.out.println("[LoadBuffer] " + loadEntry.tag + " COMPLETED with value " + loadEntry.result);
                     markInstructionExecEnd(loadEntry.tag, currentCycle);
-                    pendingResults.add(new PendingResult(loadEntry.tag, loadEntry.result, true));
+                    
+                    // FIXED: Pass address to PendingResult for cache fill at write-back
+                    pendingResults.add(new PendingResult(loadEntry.tag, loadEntry.result, true, addr));
                     completedLoads.add(loadEntry);
                 }
             }
@@ -298,9 +351,12 @@ public class SimulatorState {
                 storeEntry.remainingCycles--;
                 
                 if (storeEntry.remainingCycles == 0) {
+                    int addr = storeEntry.computeAddress();
                     System.out.println("[StoreBuffer] " + storeEntry.tag + " COMPLETED");
                     markInstructionExecEnd(storeEntry.tag, currentCycle);
-                    pendingResults.add(new PendingResult(storeEntry.tag, storeEntry.storeValue, false));
+                    
+                    // FIXED: Pass address to PendingResult for cache update at write-back
+                    pendingResults.add(new PendingResult(storeEntry.tag, storeEntry.storeValue, false, addr));
                     completedStores.add(storeEntry);
                 }
             }
@@ -333,9 +389,11 @@ public class SimulatorState {
                 Cache.CacheAccessResult result = cache.access(addr, memory);
                 storeEntry.remainingCycles = result.latency;
                 storeToMemory(storeEntry.instruction, addr, storeEntry.storeValue);
-                cache.writeThrough(addr, memory);
+                
+                // FIXED: Don't call cache.writeThrough here - it will be called at write-back
+                
                 System.out.println("[StoreBuffer] " + storeEntry.tag + " STORING " + storeEntry.storeValue +
-                                 " to address " + addr);
+                                 " to address " + addr + " (cache update at write-back)");
                 markInstructionExecStart(storeEntry.tag, currentCycle);
             }
         }
@@ -427,7 +485,7 @@ public class SimulatorState {
             if (canIssue) {
                 instr.setIssueCycle(currentCycle);
                 instructionStatuses.get(prevPc).issueCycle = currentCycle;
-                instructionStatuses.get(prevPc).tag = assignedTag; // FIXED: Store the tag
+                instructionStatuses.get(prevPc).tag = assignedTag;
                 debug("Stored tag " + assignedTag + " for instruction at index " + prevPc);
                 issueUnit.jumpTo(prevPc + 1);
                 recordInstructionMix(instr);
@@ -451,7 +509,7 @@ public class SimulatorState {
         debug("=== END CYCLE " + currentCycle + " ===");
         debug("pendingResults at end: " + pendingResults.size());
         for (PendingResult pr : pendingResults) {
-            debug("  - " + pr.tag + " (broadcast=" + pr.broadcast + ")");
+            debug("  - " + pr.tag + " (broadcast=" + pr.broadcast + ", address=" + pr.memoryAddress + ")");
         }
         
         // Print status
@@ -480,7 +538,7 @@ public class SimulatorState {
         switch (instr.getType()) {
             case ALU_INT:
                 debug("ALU_INT latency = " + intLatency);
-                return intLatency;  // Should be 1
+                return intLatency;
             case ALU_FP:
                 if (opcode.contains("ADD") || opcode.contains("SUB")) {
                     debug("FP ADD/SUB latency = " + fpAddLatency);
@@ -883,16 +941,18 @@ public class SimulatorState {
         public int writeBackCycle = -1;
     }
 
+    // FIXED: Added memoryAddress field for cache updates at write-back
     private static class PendingResult {
         final String tag;
         final double result;
         final boolean broadcast;
+        final Integer memoryAddress;  // For LOAD/STORE cache updates
 
-        PendingResult(String tag, double result, boolean broadcast) {
+        PendingResult(String tag, double result, boolean broadcast, Integer memoryAddress) {
             this.tag = tag;
             this.result = result;
             this.broadcast = broadcast;
+            this.memoryAddress = memoryAddress;
         }
     }
 }
- 

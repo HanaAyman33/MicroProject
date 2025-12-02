@@ -934,7 +934,7 @@ public class MainController {
             return "-";
         }
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < Math.min(8, bytes.length); i++) {
+        for (int i = 0; i < bytes.length; i++) {
             sb.append(String.format("%02X ", bytes[i]));
         }
         return sb.toString(). trim();

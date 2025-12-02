@@ -71,9 +71,11 @@ public class Memory {
 
     public byte[] loadBlock(int blockStartAddress, int blockSize) {
         byte[] block = new byte[blockSize];
+        System.out.println("[Memory] loadBlock called: blockStartAddress=" + blockStartAddress + ", blockSize=" + blockSize);
         for (int i = 0; i < blockSize; i++) {
             block[i] = loadByte(blockStartAddress + i);
         }
+        System.out.println("[Memory] loadBlock returning: " + java.util.Arrays.toString(block));
         return block;
     }
 }
