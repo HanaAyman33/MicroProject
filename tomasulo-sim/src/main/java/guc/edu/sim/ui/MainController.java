@@ -999,8 +999,7 @@ public class MainController {
                 view.execStartProperty().set(String.valueOf(status.execStartCycle));
             }
             if (status.execEndCycle > 0) {
-                int displayExecEnd = status.execEndCycle - 1;
-                view.execEndProperty().set(String.valueOf(displayExecEnd));
+                view.execEndProperty().set(String.valueOf(status.execEndCycle));
             }
             if (status.writeBackCycle > 0) {
                 view.writeBackProperty().set(String.valueOf(status.writeBackCycle));
