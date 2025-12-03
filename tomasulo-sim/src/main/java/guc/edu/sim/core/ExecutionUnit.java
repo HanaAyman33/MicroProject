@@ -76,8 +76,10 @@ public class ExecutionUnit {
         remainingCycles--;
         
         // Check if execution is complete (reaches 0 or less)
-        // Note: For latency 1, remainingCycles starts at 0, so after decrement it's -1
-        // This case is typically handled in SimulatorState directly for latency-1
+        // For latency-1 instructions, remainingCycles starts at 0 (since start cycle counts as
+        // first execution cycle). After decrement it's -1, which triggers completion here.
+        // This ensures consistent behavior whether the instruction goes through tickUnits()
+        // or is handled by the latency-1 fast path in SimulatorState.
         if (remainingCycles <= 0) {
             System.out.println("[ExecutionUnit-" + unitType + "] " + current.getId() + 
                              " completing execution");

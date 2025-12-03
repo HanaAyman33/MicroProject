@@ -368,7 +368,7 @@ public class SimulatorState {
         }
         
         // Phase 7: Start NEW load operations that are ready
-        List<LoadBuffer.LoadEntry> latency1Loads = new ArrayList<>();
+        List<LoadBuffer.LoadEntry> immediatelyCompletedLoads = new ArrayList<>();
         for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
             if (!loadEntry.executing && loadEntry.isReadyForDispatch(currentCycle)) {
                 loadEntry.executing = true;
@@ -388,16 +388,16 @@ public class SimulatorState {
                     System.out.println("[LoadBuffer] " + loadEntry.tag + " COMPLETED (latency 1) with value " + loadEntry.result);
                     markInstructionExecEnd(loadEntry.tag, currentCycle);
                     pendingResults.add(new PendingResult(loadEntry.tag, loadEntry.result, true, addr));
-                    latency1Loads.add(loadEntry);
+                    immediatelyCompletedLoads.add(loadEntry);
                 }
             }
         }
-        for (LoadBuffer.LoadEntry entry : latency1Loads) {
+        for (LoadBuffer.LoadEntry entry : immediatelyCompletedLoads) {
             loadBuffer.removeEntry(entry);
         }
 
         // Phase 8: Start NEW store operations that are ready
-        List<StoreBuffer.StoreEntry> latency1Stores = new ArrayList<>();
+        List<StoreBuffer.StoreEntry> immediatelyCompletedStores = new ArrayList<>();
         for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
             if (!storeEntry.executing && storeEntry.isReadyForDispatch(currentCycle)) {
                 storeEntry.executing = true;
@@ -420,11 +420,11 @@ public class SimulatorState {
                     System.out.println("[StoreBuffer] " + storeEntry.tag + " COMPLETED (latency 1)");
                     markInstructionExecEnd(storeEntry.tag, currentCycle);
                     pendingResults.add(new PendingResult(storeEntry.tag, storeEntry.storeValue, false, addr));
-                    latency1Stores.add(storeEntry);
+                    immediatelyCompletedStores.add(storeEntry);
                 }
             }
         }
-        for (StoreBuffer.StoreEntry entry : latency1Stores) {
+        for (StoreBuffer.StoreEntry entry : immediatelyCompletedStores) {
             storeBuffer.removeEntry(entry);
         }
         
