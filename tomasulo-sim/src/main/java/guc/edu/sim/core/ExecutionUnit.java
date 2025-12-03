@@ -49,13 +49,15 @@ public class ExecutionUnit {
         current = entry;
         int latency = latencyConfig.getLatency(unitType, entry.getOpcode());
         
-        // Latency represents how many cycles the instruction occupies an execution unit
-        // Latency 0 is invalid, minimum is 1
-        remainingCycles = Math.max(1, latency);
+        // FIXED: The start cycle counts as the first cycle of execution.
+        // Formula: execEndCycle = execStartCycle + latency - 1
+        // So remainingCycles = latency - 1 (since start cycle is cycle 1 of latency)
+        // For latency 1, remainingCycles = 0, which is handled specially in SimulatorState
+        remainingCycles = Math.max(0, latency - 1);
         
         entry.markExecuting();
         System.out.println("[ExecutionUnit-" + unitType + "] Started " + entry.getId() + 
-                         " with latency " + remainingCycles + " cycles");
+                         " with latency " + latency + " cycles (remainingCycles=" + remainingCycles + ")");
         return true;
     }
 
@@ -73,8 +75,10 @@ public class ExecutionUnit {
         // Decrement cycles
         remainingCycles--;
         
-        // Check if execution is complete (reaches 0)
-        if (remainingCycles == 0) {
+        // Check if execution is complete (reaches 0 or less)
+        // Note: For latency 1, remainingCycles starts at 0, so after decrement it's -1
+        // This case is typically handled in SimulatorState directly for latency-1
+        if (remainingCycles <= 0) {
             System.out.println("[ExecutionUnit-" + unitType + "] " + current.getId() + 
                              " completing execution");
             // Complete execution in this cycle
