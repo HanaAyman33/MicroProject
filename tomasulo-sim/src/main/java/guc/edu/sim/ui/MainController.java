@@ -337,7 +337,10 @@ public class MainController {
         
         // Run simulation in background thread
         new Thread(() -> {
-            while (isRunning && sim.getIssueUnit().hasNext()) {
+            // Keep running while:
+            // 1. There are instructions to issue, OR
+            // 2. There are instructions that haven't completed (not all write-backs are done)
+            while (isRunning && (sim.getIssueUnit().hasNext() || hasInstructionsInProgress())) {
                 try {
                     Thread.sleep(500); // 500ms delay between cycles
                     Platform.runLater(() -> {
@@ -345,8 +348,10 @@ public class MainController {
                             stepSimulation();
                         }
                     });
+                    // Wait for UI update to complete before checking again
+                    Thread.sleep(100);
                 } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+                    Thread. currentThread().interrupt();
                     break;
                 }
             }
@@ -357,6 +362,44 @@ public class MainController {
                 log("✓ Simulation completed");
             });
         }).start();
+    }
+    
+ // Check if there are any instructions still in progress (not yet written back)
+    private boolean hasInstructionsInProgress() {
+        if (sim == null) {
+            return false;
+        }
+        
+        // Check if there are any reservation stations busy
+        if (sim.getReservationStations() != null) {
+            for (ReservationStationEntry entry : sim.getReservationStations(). getStations()) {
+                // If any station is busy, we have instructions in progress
+                return true;
+            }
+        }
+        
+        // Check if there are any load buffer entries
+        if (sim.getLoadBuffer() != null && ! sim.getLoadBuffer().getBuffer().isEmpty()) {
+            return true;
+        }
+        
+        // Check if there are any store buffer entries
+        if (sim.getStoreBuffer() != null && !sim.getStoreBuffer().getBuffer().isEmpty()) {
+            return true;
+        }
+        
+        // Check instruction statuses to see if any haven't written back yet
+        if (sim.getInstructionStatuses() != null) {
+            List<SimulatorState.InstructionStatus> statuses = sim.getInstructionStatuses();
+            for (SimulatorState.InstructionStatus status : statuses) {
+                // If instruction was issued but hasn't written back, it's still in progress
+                if (status. issueCycle > 0 && status.writeBackCycle <= 0) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
     }
 
     @FXML
@@ -943,23 +986,24 @@ public class MainController {
     private void updateInstructionTable() {
         if (sim == null || sim.getInstructionStatuses() == null) return;
         
-        List<SimulatorState.InstructionStatus> statuses = sim.getInstructionStatuses();
+        List<SimulatorState. InstructionStatus> statuses = sim.getInstructionStatuses();
         
         for (int i = 0; i < Math.min(instructions.size(), statuses.size()); i++) {
-            SimulatorState.InstructionStatus status = statuses.get(i);
+            SimulatorState.InstructionStatus status = statuses. get(i);
             InstructionRowView view = instructions.get(i);
             
             if (status.issueCycle > 0) {
-                view.issueProperty().set(String.valueOf(status.issueCycle));
+                view. issueProperty().set(String. valueOf(status.issueCycle));
             }
             if (status.execStartCycle > 0) {
                 view.execStartProperty().set(String.valueOf(status.execStartCycle));
             }
             if (status.execEndCycle > 0) {
-                view.execEndProperty().set(String.valueOf(status.execEndCycle));
+                int displayExecEnd = status.execEndCycle - 1;
+                view.execEndProperty().set(String.valueOf(displayExecEnd));
             }
             if (status.writeBackCycle > 0) {
-                view.writeBackProperty(). set(String.valueOf(status.writeBackCycle));
+                view.writeBackProperty().set(String.valueOf(status.writeBackCycle));
             }
         }
     }
