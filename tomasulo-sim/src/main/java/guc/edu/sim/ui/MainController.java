@@ -10,6 +10,7 @@ import javafx.application.Platform;
 import javafx.stage.FileChooser;
 import java.io.File;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -998,7 +999,7 @@ public class MainController {
         instructions.clear();
         
         // Collect all execution instances across all instructions, sorted by issue cycle
-        java.util.List<RowData> allRows = new java.util.ArrayList<>();
+        List<RowData> allRows = new ArrayList<>();
         
         for (int i = 0; i < statuses.size() && i < instrList.size(); i++) {
             SimulatorState.InstructionStatus status = statuses.get(i);
@@ -1007,7 +1008,7 @@ public class MainController {
             String text = toDisplayString(instr);
             
             // Get all execution instances for this instruction
-            java.util.List<SimulatorState.ExecutionInstance> instances = status.getExecutionInstances();
+            List<SimulatorState.ExecutionInstance> instances = status.getExecutionInstances();
             
             if (instances.isEmpty()) {
                 // No executions yet - show a placeholder row with iteration 0
