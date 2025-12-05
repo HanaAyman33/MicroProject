@@ -26,6 +26,7 @@ public class MainController {
     // Program tab
     @FXML private TableView<InstructionRowView> instructionTable;
     @FXML private TableColumn<InstructionRowView, Number> colInstrIndex;
+    @FXML private TableColumn<InstructionRowView, Number> colIteration;
     @FXML private TableColumn<InstructionRowView, String> colInstrPC;
     @FXML private TableColumn<InstructionRowView, String> colInstrText;
     @FXML private TableColumn<InstructionRowView, String> colIssue;
@@ -192,6 +193,9 @@ public class MainController {
 
     private void setupInstructionTable() {
         colInstrIndex.setCellValueFactory(new PropertyValueFactory<>("index"));
+        if (colIteration != null) {
+            colIteration.setCellValueFactory(new PropertyValueFactory<>("iteration"));
+        }
         colInstrPC.setCellValueFactory(new PropertyValueFactory<>("pc"));
         colInstrText.setCellValueFactory(new PropertyValueFactory<>("instruction"));
         colIssue.setCellValueFactory(new PropertyValueFactory<>("issue"));
@@ -984,19 +988,86 @@ public class MainController {
     }
 
     private void updateInstructionTable() {
-        if (sim == null || sim.getInstructionStatuses() == null) return;
+        if (sim == null || sim.getInstructionStatuses() == null || sim.getProgram() == null) return;
         
-        List<SimulatorState. InstructionStatus> statuses = sim.getInstructionStatuses();
+        List<SimulatorState.InstructionStatus> statuses = sim.getInstructionStatuses();
+        Program program = sim.getProgram();
+        List<Instruction> instrList = program.getInstructions();
         
-        for (int i = 0; i < Math.min(instructions.size(), statuses.size()); i++) {
-            SimulatorState.InstructionStatus status = statuses. get(i);
-            InstructionRowView view = instructions.get(i);
+        // Clear and rebuild the instruction table to show all iterations
+        instructions.clear();
+        
+        // Collect all execution instances across all instructions, sorted by issue cycle
+        java.util.List<RowData> allRows = new java.util.ArrayList<>();
+        
+        for (int i = 0; i < statuses.size() && i < instrList.size(); i++) {
+            SimulatorState.InstructionStatus status = statuses.get(i);
+            Instruction instr = instrList.get(i);
+            String pcStr = String.format("0x%04X", i * 4);
+            String text = toDisplayString(instr);
             
-            // Always update values to show latest execution timing for loop iterations
-            view.issueProperty().set(status.issueCycle > 0 ? String.valueOf(status.issueCycle) : "-");
-            view.execStartProperty().set(status.execStartCycle > 0 ? String.valueOf(status.execStartCycle) : "-");
-            view.execEndProperty().set(status.execEndCycle > 0 ? String.valueOf(status.execEndCycle) : "-");
-            view.writeBackProperty().set(status.writeBackCycle > 0 ? String.valueOf(status.writeBackCycle) : "-");
+            // Get all execution instances for this instruction
+            java.util.List<SimulatorState.ExecutionInstance> instances = status.getExecutionInstances();
+            
+            if (instances.isEmpty()) {
+                // No executions yet - show a placeholder row with iteration 0
+                allRows.add(new RowData(i + 1, 0, pcStr, text, -1, -1, -1, -1, Integer.MAX_VALUE));
+            } else {
+                // Add a row for each execution instance (iteration)
+                for (SimulatorState.ExecutionInstance instance : instances) {
+                    int sortKey = instance.issueCycle > 0 ? instance.issueCycle : Integer.MAX_VALUE;
+                    allRows.add(new RowData(i + 1, instance.iteration, pcStr, text, 
+                                           instance.issueCycle, instance.execStartCycle, 
+                                           instance.execEndCycle, instance.writeBackCycle, sortKey));
+                }
+            }
+        }
+        
+        // Sort rows by issue cycle to show execution order
+        allRows.sort((a, b) -> {
+            if (a.sortKey != b.sortKey) return Integer.compare(a.sortKey, b.sortKey);
+            // If same issue cycle, sort by instruction index
+            if (a.index != b.index) return Integer.compare(a.index, b.index);
+            // If same instruction, sort by iteration
+            return Integer.compare(a.iteration, b.iteration);
+        });
+        
+        // Create InstructionRowView for each row
+        for (RowData row : allRows) {
+            String issueStr = row.issueCycle > 0 ? String.valueOf(row.issueCycle) : "-";
+            String execStartStr = row.execStartCycle > 0 ? String.valueOf(row.execStartCycle) : "-";
+            String execEndStr = row.execEndCycle > 0 ? String.valueOf(row.execEndCycle) : "-";
+            String writeBackStr = row.writeBackCycle > 0 ? String.valueOf(row.writeBackCycle) : "-";
+            int iterationDisplay = row.iteration > 0 ? row.iteration : 0;
+            
+            instructions.add(new InstructionRowView(row.index, iterationDisplay, row.pc, row.instruction, 
+                                                    issueStr, execStartStr, execEndStr, writeBackStr));
+        }
+    }
+    
+    // Helper class to store row data before sorting
+    private static class RowData {
+        final int index;
+        final int iteration;
+        final String pc;
+        final String instruction;
+        final int issueCycle;
+        final int execStartCycle;
+        final int execEndCycle;
+        final int writeBackCycle;
+        final int sortKey;
+        
+        RowData(int index, int iteration, String pc, String instruction, 
+                int issueCycle, int execStartCycle, int execEndCycle, int writeBackCycle, int sortKey) {
+            this.index = index;
+            this.iteration = iteration;
+            this.pc = pc;
+            this.instruction = instruction;
+            this.issueCycle = issueCycle;
+            this.execStartCycle = execStartCycle;
+            this.execEndCycle = execEndCycle;
+            this.writeBackCycle = writeBackCycle;
+            this.sortKey = sortKey;
         }
     }
 
