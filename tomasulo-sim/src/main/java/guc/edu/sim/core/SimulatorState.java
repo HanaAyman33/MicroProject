@@ -654,7 +654,7 @@ public class SimulatorState {
         debug("markInstructionExecStart: tag=" + tag + " cycle=" + cycle);
         for (int i = 0; i < instructionStatuses.size(); i++) {
             InstructionStatus status = instructionStatuses.get(i);
-            if (status.tag != null && status.tag.equals(tag) && status.execStartCycle == -1) {
+            if (status. tag != null && status.tag. equals(tag)) {
                 status.execStartCycle = cycle;
                 debug("Found instruction at index " + i + ", set execStartCycle=" + cycle);
                 break;
@@ -666,7 +666,7 @@ public class SimulatorState {
         debug("markInstructionExecEnd: tag=" + tag + " cycle=" + cycle);
         for (int i = 0; i < instructionStatuses.size(); i++) {
             InstructionStatus status = instructionStatuses.get(i);
-            if (status.tag != null && status.tag.equals(tag) && status.execEndCycle == -1) {
+            if (status. tag != null && status.tag. equals(tag)){
                 status.execEndCycle = cycle;
                 debug("Found instruction at index " + i + ", set execEndCycle=" + cycle);
                 break;
@@ -680,7 +680,7 @@ public class SimulatorState {
         boolean found = false;
         for (int i = 0; i < instructionStatuses.size(); i++) {
             InstructionStatus status = instructionStatuses.get(i);
-            if (status.tag != null && status.tag.equals(tag) && status.writeBackCycle == -1) {
+            if (status. tag != null && status.tag. equals(tag)) {
                 status.writeBackCycle = cycle;
                 debug("FOUND! Set writeBackCycle=" + cycle + " for instruction at index " + i);
                 found = true;
