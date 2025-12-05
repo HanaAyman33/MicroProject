@@ -24,6 +24,11 @@ public class SimulatorState {
     private int lastIssuedIndex = -1;
     private List<InstructionStatus> instructionStatuses = new ArrayList<>();
     
+    // Iteration tracking: maps instruction index to current iteration count
+    private Map<Integer, Integer> iterationCountByIndex = new HashMap<>();
+    // Track which InstructionStatus index corresponds to which tag
+    private Map<String, Integer> tagToStatusIndex = new HashMap<>();
+    
     // Configuration
     private int fpAddSize = 3;
     private int fpMulSize = 2;
@@ -118,8 +123,12 @@ public class SimulatorState {
         issueUnit = new IssueUnit(program);
         
         instructionStatuses.clear();
+        iterationCountByIndex.clear();
+        tagToStatusIndex.clear();
         for (int i = 0; i < program.size(); i++) {
-            instructionStatuses.add(new InstructionStatus());
+            InstructionStatus status = new InstructionStatus(i, 1);
+            instructionStatuses.add(status);
+            iterationCountByIndex.put(i, 1);
         }
         pendingResults.clear();
         inFlight.clear();
@@ -459,7 +468,22 @@ public class SimulatorState {
             }
             if (branchUnit.shouldFlushQueue()) {
                 int targetPc = branchUnit.getResolvedTargetPc();
+                int currentPc = issueUnit.getPc();
                 System.out.println("[Branch] Taking branch to PC=" + targetPc);
+                
+                // Detect backward branch (loop) - this means we're starting a new iteration
+                if (targetPc < currentPc) {
+                    System.out.println("[Branch] Backward branch detected - starting new loop iteration");
+                    // Create new InstructionStatus entries for all instructions in the loop range
+                    for (int i = targetPc; i < currentPc; i++) {
+                        int newIteration = iterationCountByIndex.getOrDefault(i, 1) + 1;
+                        iterationCountByIndex.put(i, newIteration);
+                        InstructionStatus newStatus = new InstructionStatus(i, newIteration);
+                        instructionStatuses.add(newStatus);
+                        System.out.println("[Branch] Created new status for instruction " + i + " iteration " + newIteration);
+                    }
+                }
+                
                 issueUnit.jumpTo(targetPc);
             }
             branchUnit.clear();
@@ -535,9 +559,19 @@ public class SimulatorState {
             
             if (canIssue) {
                 instr.setIssueCycle(currentCycle);
-                instructionStatuses.get(prevPc).issueCycle = currentCycle;
-                instructionStatuses.get(prevPc).tag = assignedTag;
-                debug("Stored tag " + assignedTag + " for instruction at index " + prevPc);
+                // Find the correct status entry for the current iteration
+                int currentIteration = iterationCountByIndex.getOrDefault(prevPc, 1);
+                InstructionStatus currentStatus = findStatusForIteration(prevPc, currentIteration);
+                if (currentStatus != null) {
+                    currentStatus.issueCycle = currentCycle;
+                    currentStatus.tag = assignedTag;
+                    // Store mapping from tag to status index for later lookup
+                    int statusIndex = instructionStatuses.indexOf(currentStatus);
+                    tagToStatusIndex.put(assignedTag, statusIndex);
+                    debug("Stored tag " + assignedTag + " for instruction at index " + prevPc + " iteration " + currentIteration);
+                } else {
+                    debug("WARNING: Could not find status for instruction " + prevPc + " iteration " + currentIteration);
+                }
                 issueUnit.jumpTo(prevPc + 1);
                 recordInstructionMix(instr);
                 if (hazardSnapshot != null) {
@@ -650,44 +684,66 @@ public class SimulatorState {
         return 0.0;
     }
     
+    /**
+     * Find the InstructionStatus for a specific program index and iteration.
+     */
+    private InstructionStatus findStatusForIteration(int programIndex, int iteration) {
+        for (InstructionStatus status : instructionStatuses) {
+            if (status.programIndex == programIndex && status.iteration == iteration) {
+                return status;
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * Find the InstructionStatus by tag using the direct lookup map.
+     */
+    private InstructionStatus findStatusByTag(String tag) {
+        if (tag == null) return null;
+        Integer index = tagToStatusIndex.get(tag);
+        if (index != null && index >= 0 && index < instructionStatuses.size()) {
+            return instructionStatuses.get(index);
+        }
+        // Fallback to linear search if not in map
+        for (InstructionStatus status : instructionStatuses) {
+            if (tag.equals(status.tag)) {
+                return status;
+            }
+        }
+        return null;
+    }
+    
     private void markInstructionExecStart(String tag, int cycle) {
         debug("markInstructionExecStart: tag=" + tag + " cycle=" + cycle);
-        for (int i = 0; i < instructionStatuses.size(); i++) {
-            InstructionStatus status = instructionStatuses.get(i);
-            if (status.tag != null && status.tag.equals(tag)) {
-                status.execStartCycle = cycle;
-                debug("Found instruction at index " + i + ", set execStartCycle=" + cycle);
-                break;
-            }
+        InstructionStatus status = findStatusByTag(tag);
+        if (status != null) {
+            status.execStartCycle = cycle;
+            debug("Found instruction, set execStartCycle=" + cycle);
+        } else {
+            debug("WARNING: Could not find instruction with tag " + tag);
         }
     }
     
     private void markInstructionExecEnd(String tag, int cycle) {
         debug("markInstructionExecEnd: tag=" + tag + " cycle=" + cycle);
-        for (int i = 0; i < instructionStatuses.size(); i++) {
-            InstructionStatus status = instructionStatuses.get(i);
-            if (status.tag != null && status.tag.equals(tag)){
-                status.execEndCycle = cycle;
-                debug("Found instruction at index " + i + ", set execEndCycle=" + cycle);
-                break;
-            }
+        InstructionStatus status = findStatusByTag(tag);
+        if (status != null) {
+            status.execEndCycle = cycle;
+            debug("Found instruction, set execEndCycle=" + cycle);
+        } else {
+            debug("WARNING: Could not find instruction with tag " + tag);
         }
     }
     
     private void markInstructionWriteBack(String tag, int cycle) {
         debug("markInstructionWriteBack: tag=" + tag + " cycle=" + cycle);
         debug("Looking through " + instructionStatuses.size() + " instruction statuses");
-        boolean found = false;
-        for (int i = 0; i < instructionStatuses.size(); i++) {
-            InstructionStatus status = instructionStatuses.get(i);
-            if (status.tag != null && status.tag.equals(tag)){
-                status.writeBackCycle = cycle;
-                debug("FOUND! Set writeBackCycle=" + cycle + " for instruction at index " + i);
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
+        InstructionStatus status = findStatusByTag(tag);
+        if (status != null) {
+            status.writeBackCycle = cycle;
+            debug("FOUND! Set writeBackCycle=" + cycle + " for tag " + tag);
+        } else {
             debug("WARNING: Could not find instruction with tag " + tag + " for write-back!");
         }
         completeIssuedInstruction(tag);
@@ -990,6 +1046,18 @@ public class SimulatorState {
         public int execStartCycle = -1;
         public int execEndCycle = -1;
         public int writeBackCycle = -1;
+        public int programIndex;  // Original instruction index in the program
+        public int iteration = 1; // Loop iteration number (1-based)
+        
+        public InstructionStatus() {
+            this.programIndex = -1;
+            this.iteration = 1;
+        }
+        
+        public InstructionStatus(int programIndex, int iteration) {
+            this.programIndex = programIndex;
+            this.iteration = iteration;
+        }
     }
 
     // FIXED: Added memoryAddress field for cache updates at write-back
