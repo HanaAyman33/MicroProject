@@ -522,10 +522,16 @@ public class SimulatorState {
                 case LOAD:
                     canIssue = loadBuffer.hasFree();
                     if (canIssue) {
-                        hazardSnapshot = detectHazards(instr);
-                        loadBuffer.accept(instr);
-                        assignedTag = loadBuffer.getLastAllocatedTag();
-                        System.out.println("[Issue] Issued to Load Buffer: " + instr.getOpcode() + " -> " + assignedTag);
+                        // Check for memory address conflict with pending operations
+                        if (hasMemoryAddressConflictAtIssue(instr)) {
+                            canIssue = false;
+                            System.out.println("[Issue] STALLED - Memory address conflict for " + instr.getOpcode());
+                        } else {
+                            hazardSnapshot = detectHazards(instr);
+                            loadBuffer.accept(instr);
+                            assignedTag = loadBuffer.getLastAllocatedTag();
+                            System.out.println("[Issue] Issued to Load Buffer: " + instr.getOpcode() + " -> " + assignedTag);
+                        }
                     } else {
                         structuralHazards++;
                     }
@@ -534,10 +540,16 @@ public class SimulatorState {
                 case STORE:
                     canIssue = storeBuffer.hasFree();
                     if (canIssue) {
-                        hazardSnapshot = detectHazards(instr);
-                        storeBuffer.accept(instr);
-                        assignedTag = storeBuffer.getLastAllocatedTag();
-                        System.out.println("[Issue] Issued to Store Buffer: " + instr.getOpcode() + " -> " + assignedTag);
+                        // Check for memory address conflict with pending operations
+                        if (hasMemoryAddressConflictAtIssue(instr)) {
+                            canIssue = false;
+                            System.out.println("[Issue] STALLED - Memory address conflict for " + instr.getOpcode());
+                        } else {
+                            hazardSnapshot = detectHazards(instr);
+                            storeBuffer.accept(instr);
+                            assignedTag = storeBuffer.getLastAllocatedTag();
+                            System.out.println("[Issue] Issued to Store Buffer: " + instr.getOpcode() + " -> " + assignedTag);
+                        }
                     } else {
                         structuralHazards++;
                     }
@@ -719,6 +731,78 @@ public class SimulatorState {
                 }
             }
         }
+        return false;
+    }
+    
+    /**
+     * Check if a memory instruction (LOAD or STORE) can be issued, considering
+     * memory address dependencies according to Tomasulo's algorithm.
+     * 
+     * A memory operation cannot issue if there's a preceding memory operation
+     * to the same address that hasn't written back yet.
+     * 
+     * @param instr The instruction to check
+     * @return true if there's a conflict that prevents issue, false otherwise
+     */
+    private boolean hasMemoryAddressConflictAtIssue(Instruction instr) {
+        // Get the base register and offset for the new instruction
+        String baseReg = instr.getBase();
+        Integer offset = instr.getOffset();
+        
+        // Check if the base register value is available (not waiting for a result)
+        String baseProducer = regFile.getProducer(baseReg);
+        if (baseProducer != null) {
+            // Base register is not ready - we can't compute the address yet
+            // In this case, we conservatively allow the issue and will check
+            // at execution time (handled by hasAddressConflict method)
+            debug("hasMemoryAddressConflictAtIssue: base register " + baseReg + " not ready (waiting for " + baseProducer + ")");
+            return false;
+        }
+        
+        // Compute the address for the new instruction
+        double baseValue = regFile.getValue(baseReg);
+        int newAddress = (int) baseValue + (offset != null ? offset : 0);
+        
+        debug("hasMemoryAddressConflictAtIssue: checking address " + newAddress + " for " + instr.getOpcode());
+        
+        // Check all pending LOAD buffer entries that haven't written back yet
+        for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
+            // Check if we can compute the load's address
+            if (loadEntry.baseReady) {
+                int loadAddress = loadEntry.computeAddress();
+                
+                // Check if this load entry has written back
+                InstructionStatus loadStatus = findStatusByTag(loadEntry.tag);
+                boolean hasWrittenBack = (loadStatus != null && loadStatus.writeBackCycle > 0);
+                
+                if (loadAddress == newAddress && !hasWrittenBack) {
+                    System.out.println("[Issue] Memory address conflict at issue: " + 
+                                     instr.getOpcode() + " blocked by pending " + loadEntry.tag + 
+                                     " at address " + newAddress);
+                    return true;
+                }
+            }
+        }
+        
+        // Check all pending STORE buffer entries that haven't written back yet
+        for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
+            // Check if we can compute the store's address
+            if (storeEntry.baseReady) {
+                int storeAddress = storeEntry.computeAddress();
+                
+                // Check if this store entry has written back
+                InstructionStatus storeStatus = findStatusByTag(storeEntry.tag);
+                boolean hasWrittenBack = (storeStatus != null && storeStatus.writeBackCycle > 0);
+                
+                if (storeAddress == newAddress && !hasWrittenBack) {
+                    System.out.println("[Issue] Memory address conflict at issue: " + 
+                                     instr.getOpcode() + " blocked by pending " + storeEntry.tag + 
+                                     " at address " + newAddress);
+                    return true;
+                }
+            }
+        }
+        
         return false;
     }
     
