@@ -320,7 +320,8 @@ public class SimulatorState {
             if (loadEntry.executing) {
                 loadEntry.remainingCycles--;
                 
-                if (loadEntry.remainingCycles == 0) {
+                // FIXED: Check <= 0 to handle edge cases
+                if (loadEntry.remainingCycles <= 0) {
                     int addr = loadEntry.computeAddress();
                     
                     System.out.println("[DEBUG] ========== LOAD COMPLETING ==========");
@@ -356,7 +357,8 @@ public class SimulatorState {
             if (storeEntry.executing) {
                 storeEntry.remainingCycles--;
                 
-                if (storeEntry.remainingCycles == 0) {
+                // FIXED: Check <= 0 to handle edge cases
+                if (storeEntry.remainingCycles <= 0) {
                     int addr = storeEntry.computeAddress();
                     System.out.println("[StoreBuffer] " + storeEntry.tag + " COMPLETED");
                     markInstructionExecEnd(storeEntry.tag, currentCycle);
@@ -372,36 +374,64 @@ public class SimulatorState {
         }
         
         // Phase 7: Start NEW load operations that are ready
+        List<LoadBuffer.LoadEntry> immediatelyCompletedLoads = new ArrayList<>();
         for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
             if (!loadEntry.executing && loadEntry.isReadyForDispatch(currentCycle)) {
                 loadEntry.executing = true;
                 int addr = loadEntry.computeAddress();
 
                 Cache.CacheAccessResult result = cache.access(addr, memory);
-                loadEntry.remainingCycles = result.latency;
+                // FIXED: The start cycle counts as the first cycle of execution.
+                // Formula: execEndCycle = execStartCycle + latency - 1
+                loadEntry.remainingCycles = Math.max(0, result.latency - 1);
                 loadEntry.result = loadFromMemory(loadEntry.instruction, addr);
                 System.out.println("[LoadBuffer] " + loadEntry.tag + " LOADING from address " + addr +
-                                 " (latency=" + result.latency + " cycles)");
+                                 " (latency=" + result.latency + " cycles, remainingCycles=" + loadEntry.remainingCycles + ")");
                 markInstructionExecStart(loadEntry.tag, currentCycle);
+                
+                // FIXED: Handle latency 1 case - complete immediately in same cycle
+                if (loadEntry.remainingCycles == 0) {
+                    System.out.println("[LoadBuffer] " + loadEntry.tag + " COMPLETED (latency 1) with value " + loadEntry.result);
+                    markInstructionExecEnd(loadEntry.tag, currentCycle);
+                    pendingResults.add(new PendingResult(loadEntry.tag, loadEntry.result, true, addr));
+                    immediatelyCompletedLoads.add(loadEntry);
+                }
             }
+        }
+        for (LoadBuffer.LoadEntry entry : immediatelyCompletedLoads) {
+            loadBuffer.removeEntry(entry);
         }
 
         // Phase 8: Start NEW store operations that are ready
+        List<StoreBuffer.StoreEntry> immediatelyCompletedStores = new ArrayList<>();
         for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
             if (!storeEntry.executing && storeEntry.isReadyForDispatch(currentCycle)) {
                 storeEntry.executing = true;
                 int addr = storeEntry.computeAddress();
 
                 Cache.CacheAccessResult result = cache.access(addr, memory);
-                storeEntry.remainingCycles = result.latency;
+                // FIXED: The start cycle counts as the first cycle of execution.
+                // Formula: execEndCycle = execStartCycle + latency - 1
+                storeEntry.remainingCycles = Math.max(0, result.latency - 1);
                 storeToMemory(storeEntry.instruction, addr, storeEntry.storeValue);
                 
                 // FIXED: Don't call cache.writeThrough here - it will be called at write-back
                 
                 System.out.println("[StoreBuffer] " + storeEntry.tag + " STORING " + storeEntry.storeValue +
-                                 " to address " + addr + " (cache update at write-back)");
+                                 " to address " + addr + " (latency=" + result.latency + ", remainingCycles=" + storeEntry.remainingCycles + ")");
                 markInstructionExecStart(storeEntry.tag, currentCycle);
+                
+                // FIXED: Handle latency 1 case - complete immediately in same cycle
+                if (storeEntry.remainingCycles == 0) {
+                    System.out.println("[StoreBuffer] " + storeEntry.tag + " COMPLETED (latency 1)");
+                    markInstructionExecEnd(storeEntry.tag, currentCycle);
+                    pendingResults.add(new PendingResult(storeEntry.tag, storeEntry.storeValue, false, addr));
+                    immediatelyCompletedStores.add(storeEntry);
+                }
             }
+        }
+        for (StoreBuffer.StoreEntry entry : immediatelyCompletedStores) {
+            storeBuffer.removeEntry(entry);
         }
         
         // Phase 9: Resolve branches
@@ -422,7 +452,9 @@ public class SimulatorState {
         if (branchUnit.hasResolvedBranch()) {
             if (activeBranchTag != null) {
                 markInstructionExecEnd(activeBranchTag, currentCycle);
-                markInstructionWriteBack(activeBranchTag, currentCycle);
+                // FIXED: Write-back should happen the cycle AFTER execution ends
+                // Add branch result to pendingResults for write-back in next cycle
+                pendingResults.add(new PendingResult(activeBranchTag, 0.0, false, null));
                 activeBranchTag = null;
             }
             if (branchUnit.shouldFlushQueue()) {
