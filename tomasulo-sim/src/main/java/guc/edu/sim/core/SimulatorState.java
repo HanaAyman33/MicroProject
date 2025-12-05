@@ -63,10 +63,6 @@ public class SimulatorState {
     private String activeBranchTag;
     private int currentBroadcastCycle = -1;
     
-    // Track instructions stalled due to structural hazards (no buffer/RS space)
-    // These instructions will be skipped and retried when resources become available
-    private final Set<Integer> stalledInstructions = new HashSet<>();
-    
     // DEBUG: Track specific instructions
     private static final boolean DEBUG = true;
     private void debug(String msg) {
@@ -137,7 +133,6 @@ public class SimulatorState {
         pendingResults.clear();
         inFlight.clear();
         tagToInstruction.clear();
-        stalledInstructions.clear();
         rawHazards = warHazards = wawHazards = structuralHazards = 0;
         loadIssued = storeIssued = fpIssued = intIssued = branchIssued = 0;
         branchTagCounter = 0;
