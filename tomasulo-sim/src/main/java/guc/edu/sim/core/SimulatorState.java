@@ -63,6 +63,12 @@ public class SimulatorState {
     private String activeBranchTag;
     private int currentBroadcastCycle = -1;
     
+    // Track which instruction indices have been issued (for out-of-order issue)
+    // Key: (programIndex, iteration) encoded as "programIndex:iteration"
+    private Set<String> issuedInstructions = new HashSet<>();
+    // Maximum issue window size for out-of-order issue attempts
+    private static final int MAX_ISSUE_WINDOW = 10;
+    
     // DEBUG: Track specific instructions
     private static final boolean DEBUG = true;
     private void debug(String msg) {
@@ -133,6 +139,7 @@ public class SimulatorState {
         pendingResults.clear();
         inFlight.clear();
         tagToInstruction.clear();
+        issuedInstructions.clear();
         rawHazards = warHazards = wawHazards = structuralHazards = 0;
         loadIssued = storeIssued = fpIssued = intIssued = branchIssued = 0;
         branchTagCounter = 0;
@@ -247,8 +254,12 @@ public class SimulatorState {
             debug("No pending results to write back");
         }
         
-        // Phase 1: Tick execution units (instructions that were already executing)
-        debug("PHASE 1: Checking dispatcher for completed instructions");
+        // Phase 1: Issue new instructions (moved to early phase so instructions can issue in same cycle as write-back)
+        // This implements out-of-order issue: try issuing from PC, then PC+1, etc. within a window
+        boolean issued = tryIssueInstructions(currentCycle);
+        
+        // Phase 2: Tick execution units (instructions that were already executing)
+        debug("PHASE 2: Checking dispatcher for completed instructions");
         List<ReservationStationEntry> finishedRS = dispatcher.tickUnits();
         debug("Dispatcher returned " + finishedRS.size() + " finished entries");
         for (ReservationStationEntry entry : finishedRS) {
@@ -269,7 +280,7 @@ public class SimulatorState {
             debug("Added to pendingResults: " + entry.getId() + " (size now=" + pendingResults.size() + ")");
         }
         
-        // Phase 2: Track previously executing instructions
+        // Phase 3: Track previously executing instructions
         Set<String> previouslyExecuting = new HashSet<>();
         for (ReservationStationEntry entry : rs.getStations()) {
             if (entry.isExecuting()) {
@@ -278,8 +289,8 @@ public class SimulatorState {
             }
         }
         
-        // Phase 3: Dispatch ready instructions to execution units
-        debug("PHASE 3: Dispatching ready instructions");
+        // Phase 4: Dispatch ready instructions to execution units
+        debug("PHASE 4: Dispatching ready instructions");
         for (ReservationStationEntry entry : rs.getStations()) {
             if (entry.isReadyForDispatch(currentCycle) && !entry.isExecuting()) {
                 dispatcher.addEntry(entry);
@@ -289,8 +300,8 @@ public class SimulatorState {
         
         dispatcher.dispatch();
         
-        // Phase 4: Check for newly started latency-1 instructions
-        debug("PHASE 4: Checking for newly started instructions (latency-1 detection)");
+        // Phase 5: Check for newly started latency-1 instructions
+        debug("PHASE 5: Checking for newly started instructions (latency-1 detection)");
         boolean foundLatency1 = false;
         for (ReservationStationEntry entry : rs.getStations()) {
             if (entry.isExecuting() && !previouslyExecuting.contains(entry.getId())) {
@@ -323,7 +334,7 @@ public class SimulatorState {
             debug("No latency-1 instructions detected in this cycle");
         }
         
-        // Phase 5: Tick LOAD operations that are already executing
+        // Phase 6: Tick LOAD operations that are already executing
         List<LoadBuffer.LoadEntry> completedLoads = new ArrayList<>();
         for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
             if (loadEntry.executing) {
@@ -360,7 +371,7 @@ public class SimulatorState {
             loadBuffer.removeEntry(entry);
         }
 
-        // Phase 6: Tick STORE operations that are already executing
+        // Phase 7: Tick STORE operations that are already executing
         List<StoreBuffer.StoreEntry> completedStores = new ArrayList<>();
         for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
             if (storeEntry.executing) {
@@ -382,7 +393,7 @@ public class SimulatorState {
             storeBuffer.removeEntry(entry);
         }
         
-        // Phase 7: Start NEW load operations that are ready
+        // Phase 8: Start NEW load operations that are ready
         List<LoadBuffer.LoadEntry> immediatelyCompletedLoads = new ArrayList<>();
         for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
             if (!loadEntry.executing && loadEntry.isReadyForDispatch(currentCycle)) {
@@ -411,7 +422,7 @@ public class SimulatorState {
             loadBuffer.removeEntry(entry);
         }
 
-        // Phase 8: Start NEW store operations that are ready
+        // Phase 9: Start NEW store operations that are ready
         List<StoreBuffer.StoreEntry> immediatelyCompletedStores = new ArrayList<>();
         for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
             if (!storeEntry.executing && storeEntry.isReadyForDispatch(currentCycle)) {
@@ -443,7 +454,7 @@ public class SimulatorState {
             storeBuffer.removeEntry(entry);
         }
         
-        // Phase 9: Resolve branches
+        // Phase 10: Resolve branches
         branchUnit.tryResolve(currentCycle);
         
         // Mark branch exec start when execution begins (operands ready, latency countdown starts)
@@ -489,105 +500,6 @@ public class SimulatorState {
             branchUnit.clear();
         }
         
-        // Phase 10: Issue new instruction
-        int prevPc = issueUnit.getPc();
-        boolean issued = false;
-        String assignedTag = null;
-        HazardSnapshot hazardSnapshot = null;
-        
-        if (issueUnit.hasNext()) {
-            Instruction instr = program.get(issueUnit.getPc());
-            
-            boolean canIssue = false;
-            switch (instr.getType()) {
-                case ALU_FP:
-                case ALU_INT:
-                    canIssue = rs.hasFreeFor(instr);
-                    if (canIssue) {
-                        hazardSnapshot = detectHazards(instr);
-                        rs.accept(instr, null);
-                        assignedTag = rs.getLastAllocatedTag();
-                        System.out.println("[Issue] Issued to RS: " + instr.getOpcode() + " -> " + assignedTag);
-                        debug("Instruction issued: " + instr.getOpcode() + " tag=" + assignedTag);
-                    } else {
-                        structuralHazards++;
-                    }
-                    break;
-                    
-                case LOAD:
-                    canIssue = loadBuffer.hasFree();
-                    if (canIssue) {
-                        hazardSnapshot = detectHazards(instr);
-                        loadBuffer.accept(instr);
-                        assignedTag = loadBuffer.getLastAllocatedTag();
-                        System.out.println("[Issue] Issued to Load Buffer: " + instr.getOpcode() + " -> " + assignedTag);
-                    } else {
-                        structuralHazards++;
-                    }
-                    break;
-                    
-                case STORE:
-                    canIssue = storeBuffer.hasFree();
-                    if (canIssue) {
-                        hazardSnapshot = detectHazards(instr);
-                        storeBuffer.accept(instr);
-                        assignedTag = storeBuffer.getLastAllocatedTag();
-                        System.out.println("[Issue] Issued to Store Buffer: " + instr.getOpcode() + " -> " + assignedTag);
-                    } else {
-                        structuralHazards++;
-                    }
-                    break;
-                    
-                case BRANCH:
-                    canIssue = branchUnit.isFree();
-                    if (canIssue) {
-                        hazardSnapshot = detectHazards(instr);
-                        branchUnit.accept(instr, null);
-                        assignedTag = "BR" + (++branchTagCounter);
-                        activeBranchTag = assignedTag;
-                        // Note: Don't mark exec start here - it will be marked when branch resolution begins
-                        System.out.println("[Issue] Issued to Branch Unit: " + instr.getOpcode());
-                    } else {
-                        structuralHazards++;
-                    }
-                    break;
-                case UNKNOWN:
-                default:
-                    System.out.println("[Issue] Unsupported instruction type: " + instr.getOpcode());
-                    break;
-            }
-            
-            if (canIssue) {
-                instr.setIssueCycle(currentCycle);
-                // Find the correct status entry for the current iteration
-                int currentIteration = iterationCountByIndex.getOrDefault(prevPc, 1);
-                InstructionStatus currentStatus = findStatusForIteration(prevPc, currentIteration);
-                if (currentStatus != null) {
-                    currentStatus.issueCycle = currentCycle;
-                    currentStatus.tag = assignedTag;
-                    // Store mapping from tag to status index for later lookup
-                    int statusIndex = instructionStatuses.indexOf(currentStatus);
-                    tagToStatusIndex.put(assignedTag, statusIndex);
-                    debug("Stored tag " + assignedTag + " for instruction at index " + prevPc + " iteration " + currentIteration);
-                } else {
-                    debug("WARNING: Could not find status for instruction " + prevPc + " iteration " + currentIteration);
-                }
-                issueUnit.jumpTo(prevPc + 1);
-                recordInstructionMix(instr);
-                if (hazardSnapshot != null) {
-                    if (hazardSnapshot.raw) rawHazards++;
-                    if (hazardSnapshot.war) warHazards++;
-                    if (hazardSnapshot.waw) wawHazards++;
-                }
-                trackIssuedInstruction(instr, assignedTag);
-                issued = true;
-                lastIssuedIndex = prevPc;
-                System.out.println("[Issue] PC advanced from " + prevPc + " to " + issueUnit.getPc());
-            } else {
-                System.out.println("[Issue] STALLED - No free resources for " + instr.getOpcode());
-            }
-        }
-        
         // Advance clock
         SimulationClock.nextCycle();
         
@@ -601,6 +513,164 @@ public class SimulatorState {
         printStatus();
         
         return issued;
+    }
+    
+    /**
+     * Try to issue instructions using out-of-order issue mechanism.
+     * This allows instructions after a blocked instruction to issue if they have available resources.
+     * @param currentCycle the current simulation cycle
+     * @return true if at least one instruction was issued
+     */
+    private boolean tryIssueInstructions(int currentCycle) {
+        debug("PHASE 1: Attempting to issue instructions");
+        boolean anyIssued = false;
+        
+        int startPc = issueUnit.getPc();
+        int endPc = Math.min(program.size(), startPc + MAX_ISSUE_WINDOW);
+        
+        // Track which PC we should try next cycle (lowest non-issued instruction)
+        int lowestNonIssuedPc = -1;
+        
+        for (int attemptPc = startPc; attemptPc < endPc; attemptPc++) {
+            // Get current iteration for this instruction
+            int currentIteration = iterationCountByIndex.getOrDefault(attemptPc, 1);
+            String issueKey = attemptPc + ":" + currentIteration;
+            
+            // Skip if already issued in this iteration
+            if (issuedInstructions.contains(issueKey)) {
+                debug("Instruction at PC " + attemptPc + " (iteration " + currentIteration + ") already issued, skipping");
+                continue;
+            }
+            
+            Instruction instr = program.get(attemptPc);
+            boolean canIssue = false;
+            String assignedTag = null;
+            HazardSnapshot hazardSnapshot = null;
+            
+            switch (instr.getType()) {
+                case ALU_FP:
+                case ALU_INT:
+                    canIssue = rs.hasFreeFor(instr);
+                    if (canIssue) {
+                        hazardSnapshot = detectHazards(instr);
+                        rs.accept(instr, null);
+                        assignedTag = rs.getLastAllocatedTag();
+                        System.out.println("[Issue] Issued to RS: " + instr.getOpcode() + " -> " + assignedTag);
+                        debug("Instruction issued: " + instr.getOpcode() + " tag=" + assignedTag);
+                    } else {
+                        if (lowestNonIssuedPc < 0) {
+                            lowestNonIssuedPc = attemptPc;
+                        }
+                        structuralHazards++;
+                        debug("No free RS for " + instr.getOpcode() + " at PC " + attemptPc);
+                    }
+                    break;
+                    
+                case LOAD:
+                    canIssue = loadBuffer.hasFree();
+                    if (canIssue) {
+                        hazardSnapshot = detectHazards(instr);
+                        loadBuffer.accept(instr);
+                        assignedTag = loadBuffer.getLastAllocatedTag();
+                        System.out.println("[Issue] Issued to Load Buffer: " + instr.getOpcode() + " -> " + assignedTag);
+                    } else {
+                        if (lowestNonIssuedPc < 0) {
+                            lowestNonIssuedPc = attemptPc;
+                        }
+                        structuralHazards++;
+                        debug("No free load buffer for " + instr.getOpcode() + " at PC " + attemptPc);
+                    }
+                    break;
+                    
+                case STORE:
+                    canIssue = storeBuffer.hasFree();
+                    if (canIssue) {
+                        hazardSnapshot = detectHazards(instr);
+                        storeBuffer.accept(instr);
+                        assignedTag = storeBuffer.getLastAllocatedTag();
+                        System.out.println("[Issue] Issued to Store Buffer: " + instr.getOpcode() + " -> " + assignedTag);
+                    } else {
+                        if (lowestNonIssuedPc < 0) {
+                            lowestNonIssuedPc = attemptPc;
+                        }
+                        structuralHazards++;
+                        debug("No free store buffer for " + instr.getOpcode() + " at PC " + attemptPc);
+                    }
+                    break;
+                    
+                case BRANCH:
+                    canIssue = branchUnit.isFree();
+                    if (canIssue) {
+                        hazardSnapshot = detectHazards(instr);
+                        branchUnit.accept(instr, null);
+                        assignedTag = "BR" + (++branchTagCounter);
+                        activeBranchTag = assignedTag;
+                        System.out.println("[Issue] Issued to Branch Unit: " + instr.getOpcode());
+                    } else {
+                        if (lowestNonIssuedPc < 0) {
+                            lowestNonIssuedPc = attemptPc;
+                        }
+                        structuralHazards++;
+                        debug("Branch unit busy for " + instr.getOpcode() + " at PC " + attemptPc);
+                    }
+                    break;
+                case UNKNOWN:
+                default:
+                    System.out.println("[Issue] Unsupported instruction type: " + instr.getOpcode());
+                    if (lowestNonIssuedPc < 0) {
+                        lowestNonIssuedPc = attemptPc;
+                    }
+                    break;
+            }
+            
+            if (canIssue) {
+                instr.setIssueCycle(currentCycle);
+                // Find the correct status entry for the current iteration
+                InstructionStatus currentStatus = findStatusForIteration(attemptPc, currentIteration);
+                if (currentStatus != null) {
+                    currentStatus.issueCycle = currentCycle;
+                    currentStatus.tag = assignedTag;
+                    // Store mapping from tag to status index for later lookup
+                    int statusIndex = instructionStatuses.indexOf(currentStatus);
+                    tagToStatusIndex.put(assignedTag, statusIndex);
+                    debug("Stored tag " + assignedTag + " for instruction at index " + attemptPc + " iteration " + currentIteration);
+                } else {
+                    debug("WARNING: Could not find status for instruction " + attemptPc + " iteration " + currentIteration);
+                }
+                
+                // Mark as issued for this iteration
+                issuedInstructions.add(issueKey);
+                
+                recordInstructionMix(instr);
+                if (hazardSnapshot != null) {
+                    if (hazardSnapshot.raw) rawHazards++;
+                    if (hazardSnapshot.war) warHazards++;
+                    if (hazardSnapshot.waw) wawHazards++;
+                }
+                trackIssuedInstruction(instr, assignedTag);
+                anyIssued = true;
+                lastIssuedIndex = attemptPc;
+                
+                System.out.println("[Issue] Issued instruction at PC " + attemptPc);
+            } else {
+                System.out.println("[Issue] STALLED - No free resources for " + instr.getOpcode() + " at PC " + attemptPc);
+            }
+        }
+        
+        // Update PC to the lowest non-issued instruction
+        // If all instructions in the window were issued, advance to end of window
+        if (lowestNonIssuedPc >= 0) {
+            if (issueUnit.getPc() != lowestNonIssuedPc) {
+                debug("PC updated to lowest non-issued: " + lowestNonIssuedPc);
+                issueUnit.jumpTo(lowestNonIssuedPc);
+            }
+        } else if (anyIssued) {
+            // All instructions in window were issued, advance PC to end
+            debug("All instructions in window issued, advancing PC to " + endPc);
+            issueUnit.jumpTo(endPc);
+        }
+        
+        return anyIssued;
     }
     
     // Helper method to get instruction latency
