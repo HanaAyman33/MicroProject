@@ -283,7 +283,8 @@ public class MainController {
             Instruction instr = list.get(i);
             String pcStr = String.format("0x%04X", i * 4);
             String text = toDisplayString(instr);
-            instructions.add(new InstructionRowView(i + 1, pcStr, text, "-", "-", "-", "-"));
+            // Initial rendering: iteration 1, programIndex = i
+            instructions.add(new InstructionRowView(i + 1, pcStr, text, "-", "-", "-", "-", 1, i));
         }
         refreshInstructionCount();
     }
@@ -313,6 +314,14 @@ public class MainController {
             default:
                 return op;
         }
+    }
+    
+    private String toDisplayStringWithIteration(Instruction instr, int iteration) {
+        String base = toDisplayString(instr);
+        if (iteration > 1) {
+            return base + " [iter " + iteration + "]";
+        }
+        return base;
     }
 
     private String nullSafe(String s) { return s == null ? "" : s; }
@@ -986,17 +995,48 @@ public class MainController {
     private void updateInstructionTable() {
         if (sim == null || sim.getInstructionStatuses() == null) return;
         
-        List<SimulatorState. InstructionStatus> statuses = sim.getInstructionStatuses();
+        List<SimulatorState.InstructionStatus> statuses = sim.getInstructionStatuses();
+        Program program = sim.getProgram();
         
-        for (int i = 0; i < Math.min(instructions.size(), statuses.size()); i++) {
-            SimulatorState.InstructionStatus status = statuses. get(i);
-            InstructionRowView view = instructions.get(i);
+        // Build a map of existing views by (programIndex, iteration) for efficient lookup
+        java.util.Map<String, InstructionRowView> existingViews = new java.util.HashMap<>();
+        for (InstructionRowView view : instructions) {
+            existingViews.put(view.getProgramIndex() + "_" + view.getIteration(), view);
+        }
+        
+        // Update existing rows and add new rows for new iterations
+        for (SimulatorState.InstructionStatus status : statuses) {
+            String key = status.programIndex + "_" + status.iteration;
             
-            // Always update values to show latest execution timing for loop iterations
-            view.issueProperty().set(status.issueCycle > 0 ? String.valueOf(status.issueCycle) : "-");
-            view.execStartProperty().set(status.execStartCycle > 0 ? String.valueOf(status.execStartCycle) : "-");
-            view.execEndProperty().set(status.execEndCycle > 0 ? String.valueOf(status.execEndCycle) : "-");
-            view.writeBackProperty().set(status.writeBackCycle > 0 ? String.valueOf(status.writeBackCycle) : "-");
+            InstructionRowView matchingView = existingViews.get(key);
+            
+            if (matchingView != null) {
+                // Update existing view
+                matchingView.issueProperty().set(status.issueCycle > 0 ? String.valueOf(status.issueCycle) : "-");
+                matchingView.execStartProperty().set(status.execStartCycle > 0 ? String.valueOf(status.execStartCycle) : "-");
+                matchingView.execEndProperty().set(status.execEndCycle > 0 ? String.valueOf(status.execEndCycle) : "-");
+                matchingView.writeBackProperty().set(status.writeBackCycle > 0 ? String.valueOf(status.writeBackCycle) : "-");
+            } else if (status.programIndex >= 0 && status.programIndex < program.size()) {
+                // Add new row for new iteration
+                Instruction instr = program.get(status.programIndex);
+                String pcStr = String.format("0x%04X", status.programIndex * 4);
+                String text = toDisplayStringWithIteration(instr, status.iteration);
+                
+                InstructionRowView newView = new InstructionRowView(
+                    instructions.size() + 1, // Row number (will be sequential as we add)
+                    pcStr,
+                    text,
+                    status.issueCycle > 0 ? String.valueOf(status.issueCycle) : "-",
+                    status.execStartCycle > 0 ? String.valueOf(status.execStartCycle) : "-",
+                    status.execEndCycle > 0 ? String.valueOf(status.execEndCycle) : "-",
+                    status.writeBackCycle > 0 ? String.valueOf(status.writeBackCycle) : "-",
+                    status.iteration,
+                    status.programIndex
+                );
+                instructions.add(newView);
+                existingViews.put(key, newView); // Track newly added view
+                System.out.println("[UI] Added new row for instruction " + status.programIndex + " iteration " + status.iteration);
+            }
         }
     }
 
