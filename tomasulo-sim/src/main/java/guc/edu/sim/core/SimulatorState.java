@@ -730,7 +730,29 @@ public class SimulatorState {
         // Print status
         printStatus();
         
-        return issued;
+        // Return true if simulation should continue:
+        // - An instruction was issued this cycle, OR
+        // - There are instructions still in-flight (not yet written back), OR
+        // - There are pending results waiting to write-back, OR
+        // - There are stalled instructions waiting for resources
+        boolean shouldContinue = issued || 
+                                hasInstructionsInFlight() || 
+                                !pendingResults.isEmpty() || 
+                                !stalledInstructions.isEmpty();
+        
+        return shouldContinue;
+    }
+    
+    /**
+     * Check if any instructions are still in-flight (issued but not yet written back).
+     */
+    private boolean hasInstructionsInFlight() {
+        for (InstructionStatus status : instructionStatuses) {
+            if (status.issueCycle > 0 && status.writeBackCycle <= 0) {
+                return true;
+            }
+        }
+        return false;
     }
     
     // Helper method to get instruction latency
