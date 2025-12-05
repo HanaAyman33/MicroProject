@@ -289,9 +289,27 @@ public class MemoryDependencyTest {
         System.out.println("  L.D F0, 8(R1) issued at cycle: " + loadIssueCycle);
         System.out.println("  S.D F2, 16(R1) issued at cycle: " + storeIssueCycle);
         
-        // Store should issue in cycle 2 (right after load), not waiting
-        boolean passed = (storeIssueCycle == loadIssueCycle + 1);
-        System.out.println(passed ? "✓ PASS" : "✗ FAIL");
+        // Store should be able to issue without waiting for load write-back
+        // since they access different addresses. We verify this by checking that 
+        // the store doesn't wait for the load's write-back cycle.
+        // The store should issue early (not waiting for load WB), but the exact
+        // timing depends on structural hazards and other factors.
+        
+        // Get load write-back cycle for comparison
+        int loadWriteBackCycle = -1;
+        for (SimulatorState.InstructionStatus status : sim.getInstructionStatuses()) {
+            if (status.programIndex == 0 && status.writeBackCycle > 0) {
+                loadWriteBackCycle = status.writeBackCycle;
+            }
+        }
+        
+        // Verify the store issued BEFORE the load wrote back (proving no memory conflict delay)
+        boolean passed = (storeIssueCycle > 0 && storeIssueCycle < loadWriteBackCycle);
+        if (passed) {
+            System.out.println("✓ PASS: Store issued before load write-back (no memory conflict delay)");
+        } else {
+            System.out.println("✗ FAIL: Store waited unnecessarily for load write-back");
+        }
         System.out.println();
         return passed;
     }

@@ -748,20 +748,60 @@ public class SimulatorState {
         // Get the base register and offset for the new instruction
         String baseReg = instr.getBase();
         Integer offset = instr.getOffset();
+        int newOffset = (offset != null ? offset : 0);
         
         // Check if the base register value is available (not waiting for a result)
         String baseProducer = regFile.getProducer(baseReg);
+        
         if (baseProducer != null) {
-            // Base register is not ready - we can't compute the address yet
-            // In this case, we conservatively allow the issue and will check
-            // at execution time (handled by hasAddressConflict method)
+            // Base register is not ready - we can't compute the exact address yet
+            // However, we should still check for potential conflicts with pending 
+            // memory operations that use the same base register and offset.
+            // If any pending operation has the same base register (waiting on same producer)
+            // and same offset, we conservatively assume a conflict.
             debug("hasMemoryAddressConflictAtIssue: base register " + baseReg + " not ready (waiting for " + baseProducer + ")");
+            
+            // Check load buffer entries with same base register and offset
+            for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
+                Instruction loadInstr = loadEntry.instruction;
+                if (loadInstr.getBase() != null && loadInstr.getBase().equals(baseReg)) {
+                    int loadOffset = (loadInstr.getOffset() != null ? loadInstr.getOffset() : 0);
+                    if (loadOffset == newOffset) {
+                        InstructionStatus loadStatus = findStatusByTag(loadEntry.tag);
+                        boolean hasWrittenBack = (loadStatus != null && loadStatus.writeBackCycle > 0);
+                        if (!hasWrittenBack) {
+                            System.out.println("[Issue] Memory address conflict at issue (same base+offset): " + 
+                                             instr.getOpcode() + " blocked by pending " + loadEntry.tag);
+                            return true;
+                        }
+                    }
+                }
+            }
+            
+            // Check store buffer entries with same base register and offset
+            for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
+                Instruction storeInstr = storeEntry.instruction;
+                if (storeInstr.getBase() != null && storeInstr.getBase().equals(baseReg)) {
+                    int storeOffset = (storeInstr.getOffset() != null ? storeInstr.getOffset() : 0);
+                    if (storeOffset == newOffset) {
+                        InstructionStatus storeStatus = findStatusByTag(storeEntry.tag);
+                        boolean hasWrittenBack = (storeStatus != null && storeStatus.writeBackCycle > 0);
+                        if (!hasWrittenBack) {
+                            System.out.println("[Issue] Memory address conflict at issue (same base+offset): " + 
+                                             instr.getOpcode() + " blocked by pending " + storeEntry.tag);
+                            return true;
+                        }
+                    }
+                }
+            }
+            
+            // No conflict found with same base+offset
             return false;
         }
         
         // Compute the address for the new instruction
         double baseValue = regFile.getValue(baseReg);
-        int newAddress = (int) baseValue + (offset != null ? offset : 0);
+        int newAddress = (int) baseValue + newOffset;
         
         debug("hasMemoryAddressConflictAtIssue: checking address " + newAddress + " for " + instr.getOpcode());
         
@@ -781,6 +821,21 @@ public class SimulatorState {
                                      " at address " + newAddress);
                     return true;
                 }
+            } else {
+                // Load's address is not ready - check if it might conflict by base+offset
+                Instruction loadInstr = loadEntry.instruction;
+                if (loadInstr.getBase() != null && loadInstr.getBase().equals(baseReg)) {
+                    int loadOffset = (loadInstr.getOffset() != null ? loadInstr.getOffset() : 0);
+                    if (loadOffset == newOffset) {
+                        InstructionStatus loadStatus = findStatusByTag(loadEntry.tag);
+                        boolean hasWrittenBack = (loadStatus != null && loadStatus.writeBackCycle > 0);
+                        if (!hasWrittenBack) {
+                            System.out.println("[Issue] Memory address conflict at issue (same base+offset): " + 
+                                             instr.getOpcode() + " blocked by pending " + loadEntry.tag);
+                            return true;
+                        }
+                    }
+                }
             }
         }
         
@@ -799,6 +854,21 @@ public class SimulatorState {
                                      instr.getOpcode() + " blocked by pending " + storeEntry.tag + 
                                      " at address " + newAddress);
                     return true;
+                }
+            } else {
+                // Store's address is not ready - check if it might conflict by base+offset
+                Instruction storeInstr = storeEntry.instruction;
+                if (storeInstr.getBase() != null && storeInstr.getBase().equals(baseReg)) {
+                    int storeOffset = (storeInstr.getOffset() != null ? storeInstr.getOffset() : 0);
+                    if (storeOffset == newOffset) {
+                        InstructionStatus storeStatus = findStatusByTag(storeEntry.tag);
+                        boolean hasWrittenBack = (storeStatus != null && storeStatus.writeBackCycle > 0);
+                        if (!hasWrittenBack) {
+                            System.out.println("[Issue] Memory address conflict at issue (same base+offset): " + 
+                                             instr.getOpcode() + " blocked by pending " + storeEntry.tag);
+                            return true;
+                        }
+                    }
                 }
             }
         }
