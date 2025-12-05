@@ -535,15 +535,9 @@ public class SimulatorState {
             
             if (canIssue) {
                 instr.setIssueCycle(currentCycle);
-                // Create a new execution instance for this iteration
-                InstructionStatus status = instructionStatuses.get(prevPc);
-                ExecutionInstance instance = status.startNewInstance();
-                instance.tag = assignedTag;
-                instance.issueCycle = currentCycle;
-                // Also update the legacy fields for backward compatibility
-                status.issueCycle = currentCycle;
-                status.tag = assignedTag;
-                debug("Stored tag " + assignedTag + " for instruction at index " + prevPc + " (iteration " + instance.iteration + ")");
+                instructionStatuses.get(prevPc).issueCycle = currentCycle;
+                instructionStatuses.get(prevPc).tag = assignedTag;
+                debug("Stored tag " + assignedTag + " for instruction at index " + prevPc);
                 issueUnit.jumpTo(prevPc + 1);
                 recordInstructionMix(instr);
                 if (hazardSnapshot != null) {
@@ -664,15 +658,6 @@ public class SimulatorState {
                 status.execStartCycle = cycle;
                 debug("Found instruction at index " + i + ", set execStartCycle=" + cycle);
                 break;
-            // Find the execution instance with matching tag that hasn't started execution yet
-            for (ExecutionInstance instance : status.getExecutionInstances()) {
-                if (instance.tag != null && instance.tag.equals(tag) && instance.execStartCycle == -1) {
-                    instance.execStartCycle = cycle;
-                    // Also update legacy field for backward compatibility
-                    status.execStartCycle = cycle;
-                    debug("Found instruction at index " + i + " iteration " + instance.iteration + ", set execStartCycle=" + cycle);
-                    return;
-                }
             }
         }
     }
@@ -685,15 +670,6 @@ public class SimulatorState {
                 status.execEndCycle = cycle;
                 debug("Found instruction at index " + i + ", set execEndCycle=" + cycle);
                 break;
-            // Find the execution instance with matching tag that hasn't ended execution yet
-            for (ExecutionInstance instance : status.getExecutionInstances()) {
-                if (instance.tag != null && instance.tag.equals(tag) && instance.execEndCycle == -1) {
-                    instance.execEndCycle = cycle;
-                    // Also update legacy field for backward compatibility
-                    status.execEndCycle = cycle;
-                    debug("Found instruction at index " + i + " iteration " + instance.iteration + ", set execEndCycle=" + cycle);
-                    return;
-                }
             }
         }
     }
@@ -709,18 +685,7 @@ public class SimulatorState {
                 debug("FOUND! Set writeBackCycle=" + cycle + " for instruction at index " + i);
                 found = true;
                 break;
-            // Find the execution instance with matching tag that hasn't written back yet
-            for (ExecutionInstance instance : status.getExecutionInstances()) {
-                if (instance.tag != null && instance.tag.equals(tag) && instance.writeBackCycle == -1) {
-                    instance.writeBackCycle = cycle;
-                    // Also update legacy field for backward compatibility
-                    status.writeBackCycle = cycle;
-                    debug("FOUND! Set writeBackCycle=" + cycle + " for instruction at index " + i + " iteration " + instance.iteration);
-                    found = true;
-                    break;
-                }
             }
-            if (found) break;
         }
         if (!found) {
             debug("WARNING: Could not find instruction with tag " + tag + " for write-back!");
@@ -1019,62 +984,12 @@ public class SimulatorState {
         }
     }
     
-    /**
-     * Represents a single execution instance of an instruction (one iteration).
-     */
-    public static class ExecutionInstance {
-        public String tag;
-        public int iteration;
-        public int issueCycle = -1;
-        public int execStartCycle = -1;
-        public int execEndCycle = -1;
-        public int writeBackCycle = -1;
-        
-        public ExecutionInstance(int iteration) {
-            this.iteration = iteration;
-        }
-    }
-    
-    /**
-     * Tracks all execution instances (iterations) of an instruction.
-     */
     public static class InstructionStatus {
         public String tag;
         public int issueCycle = -1;
         public int execStartCycle = -1;
         public int execEndCycle = -1;
         public int writeBackCycle = -1;
-        
-        // List of all execution instances (iterations) for this instruction
-        private final List<ExecutionInstance> executionInstances = new ArrayList<>();
-        
-        /**
-         * Get the list of all execution instances for this instruction.
-         */
-        public List<ExecutionInstance> getExecutionInstances() {
-            return executionInstances;
-        }
-        
-        /**
-         * Start a new execution instance (iteration) for this instruction.
-         * Returns the new instance.
-         */
-        public ExecutionInstance startNewInstance() {
-            int iterationNum = executionInstances.size() + 1;
-            ExecutionInstance instance = new ExecutionInstance(iterationNum);
-            executionInstances.add(instance);
-            return instance;
-        }
-        
-        /**
-         * Get the current (latest) execution instance, or null if none exists.
-         */
-        public ExecutionInstance getCurrentInstance() {
-            if (executionInstances.isEmpty()) {
-                return null;
-            }
-            return executionInstances.get(executionInstances.size() - 1);
-        }
     }
 
     // FIXED: Added memoryAddress field for cache updates at write-back
