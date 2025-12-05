@@ -17,6 +17,7 @@ public class BranchUnit implements BranchUnitInterface {
     private int latency = 1;
     private int remainingCycles = 0;
     private int readyCycle = -1;  // cycle when all operands became ready (-1 means ready at issue or not yet)
+    private int executionStartCycle = -1;  // cycle when execution actually started
 
     public BranchUnit(RegisterFile regFile, Program program) {
         this.regFile = regFile;
@@ -35,6 +36,7 @@ public class BranchUnit implements BranchUnitInterface {
         resolved = false;
         remainingCycles = latency;
         readyCycle = -1;  // Reset readyCycle for new instruction
+        executionStartCycle = -1;  // Reset execution start cycle
         
         // Read operands
         String s1 = instr.getSrc1();
@@ -79,6 +81,12 @@ public class BranchUnit implements BranchUnitInterface {
         // If operands were received from CDB, wait until the next cycle to start execution
         if (readyCycle >= 0 && currentCycle >= 0 && currentCycle <= readyCycle) {
             return;
+        }
+        
+        // Mark execution start when we first begin processing (latency countdown begins)
+        if (executionStartCycle < 0 && currentCycle >= 0) {
+            executionStartCycle = currentCycle;
+            System.out.println("[Branch] Execution started at cycle " + currentCycle);
         }
         
         if (remainingCycles > 0) {
@@ -134,10 +142,19 @@ public class BranchUnit implements BranchUnitInterface {
         targetPc = -1;
         remainingCycles = 0;
         readyCycle = -1;
+        executionStartCycle = -1;
         src1Ready = false;
         src2Ready = false;
         src1Producer = null;
         src2Producer = null;
+    }
+
+    /**
+     * Get the cycle when branch execution actually started.
+     * Returns -1 if execution hasn't started yet.
+     */
+    public int getExecutionStartCycle() {
+        return executionStartCycle;
     }
 
     @Override
