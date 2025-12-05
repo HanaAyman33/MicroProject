@@ -660,15 +660,15 @@ public class SimulatorState {
         debug("markInstructionExecStart: tag=" + tag + " cycle=" + cycle);
         for (int i = 0; i < instructionStatuses.size(); i++) {
             InstructionStatus status = instructionStatuses.get(i);
-            // Check legacy field for backward compatibility
-            if (status.tag != null && status.tag.equals(tag) && status.execStartCycle == -1) {
-                status.execStartCycle = cycle;
-                debug("Found instruction at index " + i + ", set execStartCycle=" + cycle);
-            }
-            // Also update the appropriate execution record
+            // Update execution record for the matching tag
             for (ExecutionRecord record : status.getExecutionRecords()) {
                 if (record.tag != null && record.tag.equals(tag) && record.execStartCycle == -1) {
                     record.execStartCycle = cycle;
+                    // Also update legacy field if it matches and is not yet set
+                    if (status.tag != null && status.tag.equals(tag) && status.execStartCycle == -1) {
+                        status.execStartCycle = cycle;
+                        debug("Found instruction at index " + i + ", set execStartCycle=" + cycle);
+                    }
                     debug("Found execution record at index " + i + " iteration " + record.iteration + ", set execStartCycle=" + cycle);
                     return;
                 }
@@ -680,15 +680,15 @@ public class SimulatorState {
         debug("markInstructionExecEnd: tag=" + tag + " cycle=" + cycle);
         for (int i = 0; i < instructionStatuses.size(); i++) {
             InstructionStatus status = instructionStatuses.get(i);
-            // Check legacy field for backward compatibility
-            if (status.tag != null && status.tag.equals(tag) && status.execEndCycle == -1) {
-                status.execEndCycle = cycle;
-                debug("Found instruction at index " + i + ", set execEndCycle=" + cycle);
-            }
-            // Also update the appropriate execution record
+            // Update execution record for the matching tag
             for (ExecutionRecord record : status.getExecutionRecords()) {
                 if (record.tag != null && record.tag.equals(tag) && record.execEndCycle == -1) {
                     record.execEndCycle = cycle;
+                    // Also update legacy field if it matches and is not yet set
+                    if (status.tag != null && status.tag.equals(tag) && status.execEndCycle == -1) {
+                        status.execEndCycle = cycle;
+                        debug("Found instruction at index " + i + ", set execEndCycle=" + cycle);
+                    }
                     debug("Found execution record at index " + i + " iteration " + record.iteration + ", set execEndCycle=" + cycle);
                     return;
                 }
@@ -699,29 +699,24 @@ public class SimulatorState {
     private void markInstructionWriteBack(String tag, int cycle) {
         debug("markInstructionWriteBack: tag=" + tag + " cycle=" + cycle);
         debug("Looking through " + instructionStatuses.size() + " instruction statuses");
-        boolean found = false;
         for (int i = 0; i < instructionStatuses.size(); i++) {
             InstructionStatus status = instructionStatuses.get(i);
-            // Check legacy field for backward compatibility
-            if (status.tag != null && status.tag.equals(tag) && status.writeBackCycle == -1) {
-                status.writeBackCycle = cycle;
-                debug("FOUND! Set writeBackCycle=" + cycle + " for instruction at index " + i);
-                found = true;
-            }
-            // Also update the appropriate execution record
+            // Update execution record for the matching tag
             for (ExecutionRecord record : status.getExecutionRecords()) {
                 if (record.tag != null && record.tag.equals(tag) && record.writeBackCycle == -1) {
                     record.writeBackCycle = cycle;
+                    // Also update legacy field if it matches and is not yet set
+                    if (status.tag != null && status.tag.equals(tag) && status.writeBackCycle == -1) {
+                        status.writeBackCycle = cycle;
+                        debug("FOUND! Set writeBackCycle=" + cycle + " for instruction at index " + i);
+                    }
                     debug("FOUND! Set writeBackCycle=" + cycle + " for execution record at index " + i + " iteration " + record.iteration);
-                    found = true;
-                    break;
+                    completeIssuedInstruction(tag);
+                    return;
                 }
             }
-            if (found) break;
         }
-        if (!found) {
-            debug("WARNING: Could not find instruction with tag " + tag + " for write-back!");
-        }
+        debug("WARNING: Could not find instruction with tag " + tag + " for write-back!");
         completeIssuedInstruction(tag);
     }
     
