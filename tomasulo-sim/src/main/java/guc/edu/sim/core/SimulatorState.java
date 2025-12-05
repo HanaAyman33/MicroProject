@@ -243,6 +243,12 @@ public class SimulatorState {
         List<ReservationStationEntry> finishedRS = dispatcher.tickUnits();
         debug("Dispatcher returned " + finishedRS.size() + " finished entries");
         for (ReservationStationEntry entry : finishedRS) {
+            // Skip entries that were already handled by Phase 4 (latency-1 detection)
+            // in the previous cycle - these are already marked as completed
+            if (entry.isCompleted()) {
+                debug("Skipping already completed entry: " + entry.getId());
+                continue;
+            }
             debug("Finished: " + entry.getId() + " op=" + entry.getOpcode());
             double result = (entry.getResult() instanceof Double) ? 
                 (Double) entry.getResult() : 0.0;
@@ -400,6 +406,19 @@ public class SimulatorState {
         
         // Phase 9: Resolve branches
         branchUnit.tryResolve(currentCycle);
+        
+        // Mark branch exec start when execution begins (operands ready, latency countdown starts)
+        if (activeBranchTag != null && branchUnit.getExecutionStartCycle() >= 0) {
+            int execStartCycle = branchUnit.getExecutionStartCycle();
+            // Check if we haven't already marked exec start for this branch
+            for (InstructionStatus status : instructionStatuses) {
+                if (status.tag != null && status.tag.equals(activeBranchTag) && status.execStartCycle == -1) {
+                    markInstructionExecStart(activeBranchTag, execStartCycle);
+                    break;
+                }
+            }
+        }
+        
         if (branchUnit.hasResolvedBranch()) {
             if (activeBranchTag != null) {
                 markInstructionExecEnd(activeBranchTag, currentCycle);
@@ -470,7 +489,7 @@ public class SimulatorState {
                         branchUnit.accept(instr, null);
                         assignedTag = "BR" + (++branchTagCounter);
                         activeBranchTag = assignedTag;
-                        markInstructionExecStart(assignedTag, currentCycle);
+                        // Note: Don't mark exec start here - it will be marked when branch resolution begins
                         System.out.println("[Issue] Issued to Branch Unit: " + instr.getOpcode());
                     } else {
                         structuralHazards++;
