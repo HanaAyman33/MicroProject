@@ -555,8 +555,10 @@ public class SimulatorState {
                         System.out.println("[Issue] Issued stalled to Branch Unit: " + instr.getOpcode());
                     }
                     break;
-                default:
-                    break;
+                    case UNKNOWN:
+                    default:
+                        System.out.println("[Issue] Unsupported stalled instruction type: " + instr.getOpcode());
+                        break;
             }
             
             if (canIssue) {
