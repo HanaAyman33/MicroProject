@@ -28,6 +28,7 @@ public class MainController {
     @FXML private TableColumn<InstructionRowView, Number> colInstrIndex;
     @FXML private TableColumn<InstructionRowView, String> colInstrPC;
     @FXML private TableColumn<InstructionRowView, String> colInstrText;
+    @FXML private TableColumn<InstructionRowView, Number> colIteration;
     @FXML private TableColumn<InstructionRowView, String> colIssue;
     @FXML private TableColumn<InstructionRowView, String> colExecStart;
     @FXML private TableColumn<InstructionRowView, String> colExecEnd;
@@ -194,6 +195,9 @@ public class MainController {
         colInstrIndex.setCellValueFactory(new PropertyValueFactory<>("index"));
         colInstrPC.setCellValueFactory(new PropertyValueFactory<>("pc"));
         colInstrText.setCellValueFactory(new PropertyValueFactory<>("instruction"));
+        if (colIteration != null) {
+            colIteration.setCellValueFactory(new PropertyValueFactory<>("iteration"));
+        }
         colIssue.setCellValueFactory(new PropertyValueFactory<>("issue"));
         colExecStart.setCellValueFactory(new PropertyValueFactory<>("execStart"));
         colExecEnd.setCellValueFactory(new PropertyValueFactory<>("execEnd"));
@@ -277,14 +281,8 @@ public class MainController {
 
     private void renderProgram(Program program) {
         instructions.clear();
-        if (program == null) return;
-        List<Instruction> list = program.getInstructions();
-        for (int i = 0; i < list.size(); i++) {
-            Instruction instr = list.get(i);
-            String pcStr = String.format("0x%04X", i * 4);
-            String text = toDisplayString(instr);
-            instructions.add(new InstructionRowView(i + 1, pcStr, text, "-", "-", "-", "-"));
-        }
+        // Initially don't show any instructions - they will be populated by updateInstructionTable()
+        // when instructions are issued
         refreshInstructionCount();
     }
 
@@ -450,12 +448,7 @@ public class MainController {
             System.out.println("[UI] Refreshing labels...");
             refreshAllLabels();
             
-            if (issued) {
-                int idx = sim.getLastIssuedIndex();
-                if (idx >= 0 && idx < instructions.size()) {
-                    instructions.get(idx).issueProperty().set(String.valueOf(cycle));
-                }
-            }
+            // Note: Issue cycle is now handled by updateInstructionTable() which rebuilds the table
             
             log("⏭ Stepped to cycle " + cycle);
             updateStatusBar("Executed cycle " + cycle);
@@ -984,19 +977,32 @@ public class MainController {
     }
 
     private void updateInstructionTable() {
-        if (sim == null || sim.getInstructionStatuses() == null) return;
+        if (sim == null || sim.getInstructionStatuses() == null || sim.getProgram() == null) return;
         
-        List<SimulatorState. InstructionStatus> statuses = sim.getInstructionStatuses();
+        List<SimulatorState.InstructionStatus> statuses = sim.getInstructionStatuses();
+        Program program = sim.getProgram();
         
-        for (int i = 0; i < Math.min(instructions.size(), statuses.size()); i++) {
-            SimulatorState.InstructionStatus status = statuses. get(i);
-            InstructionRowView view = instructions.get(i);
-            
-            // Always update values to show latest execution timing for loop iterations
-            view.issueProperty().set(status.issueCycle > 0 ? String.valueOf(status.issueCycle) : "-");
-            view.execStartProperty().set(status.execStartCycle > 0 ? String.valueOf(status.execStartCycle) : "-");
-            view.execEndProperty().set(status.execEndCycle > 0 ? String.valueOf(status.execEndCycle) : "-");
-            view.writeBackProperty().set(status.writeBackCycle > 0 ? String.valueOf(status.writeBackCycle) : "-");
+        // Rebuild the instruction table from statuses
+        // Clear and rebuild to handle loop iterations properly
+        instructions.clear();
+        
+        int rowIndex = 1;
+        for (SimulatorState.InstructionStatus status : statuses) {
+            int progIdx = status.programIndex;
+            if (progIdx >= 0 && progIdx < program.size()) {
+                Instruction instr = program.get(progIdx);
+                String pcStr = String.format("0x%04X", progIdx * 4);
+                String text = toDisplayString(instr);
+                
+                String issueStr = status.issueCycle > 0 ? String.valueOf(status.issueCycle) : "-";
+                String execStartStr = status.execStartCycle > 0 ? String.valueOf(status.execStartCycle) : "-";
+                String execEndStr = status.execEndCycle > 0 ? String.valueOf(status.execEndCycle) : "-";
+                String writeBackStr = status.writeBackCycle > 0 ? String.valueOf(status.writeBackCycle) : "-";
+                
+                instructions.add(new InstructionRowView(rowIndex, pcStr, text, status.iteration,
+                        issueStr, execStartStr, execEndStr, writeBackStr));
+                rowIndex++;
+            }
         }
     }
 

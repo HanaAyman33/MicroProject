@@ -23,6 +23,7 @@ public class SimulatorState {
     
     private int lastIssuedIndex = -1;
     private List<InstructionStatus> instructionStatuses = new ArrayList<>();
+    private Map<Integer, Integer> instructionIterationCount = new HashMap<>();  // Track iteration count per instruction index
     
     // Configuration
     private int fpAddSize = 3;
@@ -118,9 +119,8 @@ public class SimulatorState {
         issueUnit = new IssueUnit(program);
         
         instructionStatuses.clear();
-        for (int i = 0; i < program.size(); i++) {
-            instructionStatuses.add(new InstructionStatus());
-        }
+        instructionIterationCount.clear();
+        // Don't pre-populate instruction statuses - they will be added dynamically when issued
         pendingResults.clear();
         inFlight.clear();
         tagToInstruction.clear();
@@ -535,9 +535,19 @@ public class SimulatorState {
             
             if (canIssue) {
                 instr.setIssueCycle(currentCycle);
-                instructionStatuses.get(prevPc).issueCycle = currentCycle;
-                instructionStatuses.get(prevPc).tag = assignedTag;
-                debug("Stored tag " + assignedTag + " for instruction at index " + prevPc);
+                
+                // Create a NEW instruction status entry for this iteration
+                int iteration = instructionIterationCount.getOrDefault(prevPc, 0) + 1;
+                instructionIterationCount.put(prevPc, iteration);
+                
+                InstructionStatus newStatus = new InstructionStatus();
+                newStatus.issueCycle = currentCycle;
+                newStatus.tag = assignedTag;
+                newStatus.programIndex = prevPc;
+                newStatus.iteration = iteration;
+                instructionStatuses.add(newStatus);
+                
+                debug("Stored tag " + assignedTag + " for instruction at index " + prevPc + " (iteration " + iteration + ")");
                 issueUnit.jumpTo(prevPc + 1);
                 recordInstructionMix(instr);
                 if (hazardSnapshot != null) {
@@ -990,6 +1000,8 @@ public class SimulatorState {
         public int execStartCycle = -1;
         public int execEndCycle = -1;
         public int writeBackCycle = -1;
+        public int programIndex = -1;  // Index of the instruction in the program
+        public int iteration = 1;       // Iteration number for loop instructions
     }
 
     // FIXED: Added memoryAddress field for cache updates at write-back
