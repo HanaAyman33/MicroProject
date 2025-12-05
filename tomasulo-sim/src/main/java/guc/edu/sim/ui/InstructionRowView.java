@@ -11,10 +11,17 @@ public class InstructionRowView {
     private final StringProperty execStart = new SimpleStringProperty();
     private final StringProperty execEnd = new SimpleStringProperty();
     private final StringProperty writeBack = new SimpleStringProperty();
+    private final StringProperty iteration = new SimpleStringProperty();
 
     public InstructionRowView(int index, String pc, String instruction,
                               String issue, String execStart,
                               String execEnd, String writeBack) {
+        this(index, pc, instruction, issue, execStart, execEnd, writeBack, "");
+    }
+
+    public InstructionRowView(int index, String pc, String instruction,
+                              String issue, String execStart,
+                              String execEnd, String writeBack, String iteration) {
         this.index.set(index);
         this.pc.set(pc);
         this.instruction.set(instruction);
@@ -22,6 +29,7 @@ public class InstructionRowView {
         this.execStart.set(execStart);
         this.execEnd.set(execEnd);
         this.writeBack.set(writeBack);
+        this.iteration.set(iteration);
     }
 
     public int getIndex() { return index.get(); }
@@ -44,4 +52,7 @@ public class InstructionRowView {
 
     public String getWriteBack() { return writeBack.get(); }
     public StringProperty writeBackProperty() { return writeBack; }
+
+    public String getIteration() { return iteration.get(); }
+    public StringProperty iterationProperty() { return iteration; }
 }

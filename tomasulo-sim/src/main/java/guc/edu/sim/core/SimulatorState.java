@@ -535,9 +535,15 @@ public class SimulatorState {
             
             if (canIssue) {
                 instr.setIssueCycle(currentCycle);
-                instructionStatuses.get(prevPc).issueCycle = currentCycle;
-                instructionStatuses.get(prevPc).tag = assignedTag;
-                debug("Stored tag " + assignedTag + " for instruction at index " + prevPc);
+                InstructionStatus status = instructionStatuses.get(prevPc);
+                // Create new execution record for this iteration
+                ExecutionRecord record = status.addNewExecution();
+                record.issueCycle = currentCycle;
+                record.tag = assignedTag;
+                // Also update legacy fields for backward compatibility
+                status.issueCycle = currentCycle;
+                status.tag = assignedTag;
+                debug("Stored tag " + assignedTag + " for instruction at index " + prevPc + " (iteration " + record.iteration + ")");
                 issueUnit.jumpTo(prevPc + 1);
                 recordInstructionMix(instr);
                 if (hazardSnapshot != null) {
@@ -654,10 +660,18 @@ public class SimulatorState {
         debug("markInstructionExecStart: tag=" + tag + " cycle=" + cycle);
         for (int i = 0; i < instructionStatuses.size(); i++) {
             InstructionStatus status = instructionStatuses.get(i);
+            // Check legacy field for backward compatibility
             if (status.tag != null && status.tag.equals(tag) && status.execStartCycle == -1) {
                 status.execStartCycle = cycle;
                 debug("Found instruction at index " + i + ", set execStartCycle=" + cycle);
-                break;
+            }
+            // Also update the appropriate execution record
+            for (ExecutionRecord record : status.getExecutionRecords()) {
+                if (record.tag != null && record.tag.equals(tag) && record.execStartCycle == -1) {
+                    record.execStartCycle = cycle;
+                    debug("Found execution record at index " + i + " iteration " + record.iteration + ", set execStartCycle=" + cycle);
+                    return;
+                }
             }
         }
     }
@@ -666,10 +680,18 @@ public class SimulatorState {
         debug("markInstructionExecEnd: tag=" + tag + " cycle=" + cycle);
         for (int i = 0; i < instructionStatuses.size(); i++) {
             InstructionStatus status = instructionStatuses.get(i);
+            // Check legacy field for backward compatibility
             if (status.tag != null && status.tag.equals(tag) && status.execEndCycle == -1) {
                 status.execEndCycle = cycle;
                 debug("Found instruction at index " + i + ", set execEndCycle=" + cycle);
-                break;
+            }
+            // Also update the appropriate execution record
+            for (ExecutionRecord record : status.getExecutionRecords()) {
+                if (record.tag != null && record.tag.equals(tag) && record.execEndCycle == -1) {
+                    record.execEndCycle = cycle;
+                    debug("Found execution record at index " + i + " iteration " + record.iteration + ", set execEndCycle=" + cycle);
+                    return;
+                }
             }
         }
     }
@@ -680,12 +702,22 @@ public class SimulatorState {
         boolean found = false;
         for (int i = 0; i < instructionStatuses.size(); i++) {
             InstructionStatus status = instructionStatuses.get(i);
+            // Check legacy field for backward compatibility
             if (status.tag != null && status.tag.equals(tag) && status.writeBackCycle == -1) {
                 status.writeBackCycle = cycle;
                 debug("FOUND! Set writeBackCycle=" + cycle + " for instruction at index " + i);
                 found = true;
-                break;
             }
+            // Also update the appropriate execution record
+            for (ExecutionRecord record : status.getExecutionRecords()) {
+                if (record.tag != null && record.tag.equals(tag) && record.writeBackCycle == -1) {
+                    record.writeBackCycle = cycle;
+                    debug("FOUND! Set writeBackCycle=" + cycle + " for execution record at index " + i + " iteration " + record.iteration);
+                    found = true;
+                    break;
+                }
+            }
+            if (found) break;
         }
         if (!found) {
             debug("WARNING: Could not find instruction with tag " + tag + " for write-back!");
@@ -984,12 +1016,61 @@ public class SimulatorState {
         }
     }
     
+    /**
+     * Represents a single execution instance of an instruction (one iteration).
+     */
+    public static class ExecutionRecord {
+        public String tag;
+        public int iteration;
+        public int issueCycle = -1;
+        public int execStartCycle = -1;
+        public int execEndCycle = -1;
+        public int writeBackCycle = -1;
+
+        public ExecutionRecord(int iteration) {
+            this.iteration = iteration;
+        }
+    }
+
+    /**
+     * Tracks all execution instances for an instruction (supports loops).
+     */
     public static class InstructionStatus {
         public String tag;
         public int issueCycle = -1;
         public int execStartCycle = -1;
         public int execEndCycle = -1;
         public int writeBackCycle = -1;
+        
+        // Track all execution records for loop iterations
+        private final List<ExecutionRecord> executionRecords = new ArrayList<>();
+        
+        /**
+         * Add a new execution record for a new iteration.
+         */
+        public ExecutionRecord addNewExecution() {
+            int iteration = executionRecords.size() + 1;
+            ExecutionRecord record = new ExecutionRecord(iteration);
+            executionRecords.add(record);
+            return record;
+        }
+        
+        /**
+         * Get all execution records.
+         */
+        public List<ExecutionRecord> getExecutionRecords() {
+            return executionRecords;
+        }
+        
+        /**
+         * Get the current (most recent) execution record, or null if none exist.
+         */
+        public ExecutionRecord getCurrentExecution() {
+            if (executionRecords.isEmpty()) {
+                return null;
+            }
+            return executionRecords.get(executionRecords.size() - 1);
+        }
     }
 
     // FIXED: Added memoryAddress field for cache updates at write-back

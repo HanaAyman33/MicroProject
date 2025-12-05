@@ -28,6 +28,7 @@ public class MainController {
     @FXML private TableColumn<InstructionRowView, Number> colInstrIndex;
     @FXML private TableColumn<InstructionRowView, String> colInstrPC;
     @FXML private TableColumn<InstructionRowView, String> colInstrText;
+    @FXML private TableColumn<InstructionRowView, String> colIteration;
     @FXML private TableColumn<InstructionRowView, String> colIssue;
     @FXML private TableColumn<InstructionRowView, String> colExecStart;
     @FXML private TableColumn<InstructionRowView, String> colExecEnd;
@@ -194,6 +195,9 @@ public class MainController {
         colInstrIndex.setCellValueFactory(new PropertyValueFactory<>("index"));
         colInstrPC.setCellValueFactory(new PropertyValueFactory<>("pc"));
         colInstrText.setCellValueFactory(new PropertyValueFactory<>("instruction"));
+        if (colIteration != null) {
+            colIteration.setCellValueFactory(new PropertyValueFactory<>("iteration"));
+        }
         colIssue.setCellValueFactory(new PropertyValueFactory<>("issue"));
         colExecStart.setCellValueFactory(new PropertyValueFactory<>("execStart"));
         colExecEnd.setCellValueFactory(new PropertyValueFactory<>("execEnd"));
@@ -450,12 +454,8 @@ public class MainController {
             System.out.println("[UI] Refreshing labels...");
             refreshAllLabels();
             
-            if (issued) {
-                int idx = sim.getLastIssuedIndex();
-                if (idx >= 0 && idx < instructions.size()) {
-                    instructions.get(idx).issueProperty().set(String.valueOf(cycle));
-                }
-            }
+            // Note: updateInstructionTable() now rebuilds the table with all iterations,
+            // so we don't need to manually update individual rows here
             
             log("⏭ Stepped to cycle " + cycle);
             updateStatusBar("Executed cycle " + cycle);
@@ -984,19 +984,37 @@ public class MainController {
     }
 
     private void updateInstructionTable() {
-        if (sim == null || sim.getInstructionStatuses() == null) return;
+        if (sim == null || sim.getInstructionStatuses() == null || sim.getProgram() == null) return;
         
-        List<SimulatorState. InstructionStatus> statuses = sim.getInstructionStatuses();
+        List<SimulatorState.InstructionStatus> statuses = sim.getInstructionStatuses();
+        Program program = sim.getProgram();
         
-        for (int i = 0; i < Math.min(instructions.size(), statuses.size()); i++) {
-            SimulatorState.InstructionStatus status = statuses. get(i);
-            InstructionRowView view = instructions.get(i);
+        // Rebuild the instruction table to show all iterations
+        instructions.clear();
+        
+        for (int i = 0; i < Math.min(program.size(), statuses.size()); i++) {
+            SimulatorState.InstructionStatus status = statuses.get(i);
+            Instruction instr = program.get(i);
+            String pcStr = String.format("0x%04X", i * 4);
+            String text = toDisplayString(instr);
             
-            // Always update values to show latest execution timing for loop iterations
-            view.issueProperty().set(status.issueCycle > 0 ? String.valueOf(status.issueCycle) : "-");
-            view.execStartProperty().set(status.execStartCycle > 0 ? String.valueOf(status.execStartCycle) : "-");
-            view.execEndProperty().set(status.execEndCycle > 0 ? String.valueOf(status.execEndCycle) : "-");
-            view.writeBackProperty().set(status.writeBackCycle > 0 ? String.valueOf(status.writeBackCycle) : "-");
+            List<SimulatorState.ExecutionRecord> records = status.getExecutionRecords();
+            
+            if (records.isEmpty()) {
+                // No execution records yet, show placeholder row
+                instructions.add(new InstructionRowView(i + 1, pcStr, text, "-", "-", "-", "-", ""));
+            } else {
+                // Add a row for each execution record (iteration)
+                for (SimulatorState.ExecutionRecord record : records) {
+                    String iterStr = records.size() > 1 ? String.valueOf(record.iteration) : "";
+                    String issueStr = record.issueCycle > 0 ? String.valueOf(record.issueCycle) : "-";
+                    String execStartStr = record.execStartCycle > 0 ? String.valueOf(record.execStartCycle) : "-";
+                    String execEndStr = record.execEndCycle > 0 ? String.valueOf(record.execEndCycle) : "-";
+                    String writeBackStr = record.writeBackCycle > 0 ? String.valueOf(record.writeBackCycle) : "-";
+                    
+                    instructions.add(new InstructionRowView(i + 1, pcStr, text, issueStr, execStartStr, execEndStr, writeBackStr, iterStr));
+                }
+            }
         }
     }
 

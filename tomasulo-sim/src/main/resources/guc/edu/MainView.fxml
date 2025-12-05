@@ -136,7 +136,8 @@
                                 <columns>
                                     <TableColumn fx:id="colInstrIndex" text="#" prefWidth="50"/>
                                     <TableColumn fx:id="colInstrPC" text="PC" prefWidth="80"/>
-                                    <TableColumn fx:id="colInstrText" text="Instruction" prefWidth="250"/>
+                                    <TableColumn fx:id="colInstrText" text="Instruction" prefWidth="200"/>
+                                    <TableColumn fx:id="colIteration" text="Iteration" prefWidth="80"/>
                                     <TableColumn fx:id="colIssue" text="Issue" prefWidth="80"/>
                                     <TableColumn fx:id="colExecStart" text="Exec Start" prefWidth="100"/>
                                     <TableColumn fx:id="colExecEnd" text="Exec End" prefWidth="100"/>
