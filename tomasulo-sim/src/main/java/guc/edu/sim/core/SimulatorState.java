@@ -204,6 +204,11 @@ public class SimulatorState {
                     iterator.remove();
                     markInstructionWriteBack(pr.tag, currentCycle);
                     
+                    // Remove entry from buffer at write-back (STORE instructions)
+                    if (storeBuffer.removeEntryByTag(pr.tag)) {
+                        debug("Removed STORE entry " + pr.tag + " from buffer at write-back");
+                    }
+                    
                     // FIXED: Handle STORE cache update at write-back
                     if (pr.memoryAddress != null) {
                         cache.writeThrough(pr.memoryAddress, memory);
@@ -219,6 +224,12 @@ public class SimulatorState {
                     broadcastThisCycle = pr;
                     iterator.remove();
                     markInstructionWriteBack(pr.tag, currentCycle);
+                    
+                    // Remove entry from buffer at write-back (LOAD instructions)
+                    if (loadBuffer.removeEntryByTag(pr.tag)) {
+                        debug("Removed LOAD entry " + pr.tag + " from buffer at write-back");
+                    }
+                    
                     debug("Selected for CDB broadcast: " + pr.tag);
                 } else {
                     deferredCount++;
@@ -324,9 +335,8 @@ public class SimulatorState {
         }
         
         // Phase 5: Tick LOAD operations that are already executing
-        List<LoadBuffer.LoadEntry> completedLoads = new ArrayList<>();
         for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
-            if (loadEntry.executing) {
+            if (loadEntry.executing && !loadEntry.completedExecution) {
                 loadEntry.remainingCycles--;
                 
                 // FIXED: Check <= 0 to handle edge cases
@@ -352,18 +362,15 @@ public class SimulatorState {
                     
                     // FIXED: Pass address to PendingResult for cache fill at write-back
                     pendingResults.add(new PendingResult(loadEntry.tag, loadEntry.result, true, addr));
-                    completedLoads.add(loadEntry);
+                    // Mark as completed but don't remove - entry stays in buffer until write-back
+                    loadEntry.completedExecution = true;
                 }
             }
         }
-        for (LoadBuffer.LoadEntry entry : completedLoads) {
-            loadBuffer.removeEntry(entry);
-        }
 
         // Phase 6: Tick STORE operations that are already executing
-        List<StoreBuffer.StoreEntry> completedStores = new ArrayList<>();
         for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
-            if (storeEntry.executing) {
+            if (storeEntry.executing && !storeEntry.completedExecution) {
                 storeEntry.remainingCycles--;
                 
                 // FIXED: Check <= 0 to handle edge cases
@@ -374,18 +381,15 @@ public class SimulatorState {
                     
                     // FIXED: Pass address to PendingResult for cache update at write-back
                     pendingResults.add(new PendingResult(storeEntry.tag, storeEntry.storeValue, false, addr));
-                    completedStores.add(storeEntry);
+                    // Mark as completed but don't remove - entry stays in buffer until write-back
+                    storeEntry.completedExecution = true;
                 }
             }
         }
-        for (StoreBuffer.StoreEntry entry : completedStores) {
-            storeBuffer.removeEntry(entry);
-        }
         
         // Phase 7: Start NEW load operations that are ready
-        List<LoadBuffer.LoadEntry> immediatelyCompletedLoads = new ArrayList<>();
         for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
-            if (!loadEntry.executing && loadEntry.isReadyForDispatch(currentCycle)) {
+            if (!loadEntry.executing && !loadEntry.completedExecution && loadEntry.isReadyForDispatch(currentCycle)) {
                 loadEntry.executing = true;
                 int addr = loadEntry.computeAddress();
 
@@ -403,18 +407,15 @@ public class SimulatorState {
                     System.out.println("[LoadBuffer] " + loadEntry.tag + " COMPLETED (latency 1) with value " + loadEntry.result);
                     markInstructionExecEnd(loadEntry.tag, currentCycle);
                     pendingResults.add(new PendingResult(loadEntry.tag, loadEntry.result, true, addr));
-                    immediatelyCompletedLoads.add(loadEntry);
+                    // Mark as completed but don't remove - entry stays in buffer until write-back
+                    loadEntry.completedExecution = true;
                 }
             }
         }
-        for (LoadBuffer.LoadEntry entry : immediatelyCompletedLoads) {
-            loadBuffer.removeEntry(entry);
-        }
 
         // Phase 8: Start NEW store operations that are ready
-        List<StoreBuffer.StoreEntry> immediatelyCompletedStores = new ArrayList<>();
         for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
-            if (!storeEntry.executing && storeEntry.isReadyForDispatch(currentCycle)) {
+            if (!storeEntry.executing && !storeEntry.completedExecution && storeEntry.isReadyForDispatch(currentCycle)) {
                 storeEntry.executing = true;
                 int addr = storeEntry.computeAddress();
 
@@ -435,12 +436,10 @@ public class SimulatorState {
                     System.out.println("[StoreBuffer] " + storeEntry.tag + " COMPLETED (latency 1)");
                     markInstructionExecEnd(storeEntry.tag, currentCycle);
                     pendingResults.add(new PendingResult(storeEntry.tag, storeEntry.storeValue, false, addr));
-                    immediatelyCompletedStores.add(storeEntry);
+                    // Mark as completed but don't remove - entry stays in buffer until write-back
+                    storeEntry.completedExecution = true;
                 }
             }
-        }
-        for (StoreBuffer.StoreEntry entry : immediatelyCompletedStores) {
-            storeBuffer.removeEntry(entry);
         }
         
         // Phase 9: Resolve branches

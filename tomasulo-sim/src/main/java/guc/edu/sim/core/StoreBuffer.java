@@ -68,6 +68,21 @@ public class StoreBuffer {
         buffer.remove(entry);
     }
 
+    /**
+     * Find and remove an entry by its tag. Used during write-back.
+     * @param tag The tag of the entry to remove
+     * @return true if an entry was found and removed
+     */
+    public boolean removeEntryByTag(String tag) {
+        for (int i = 0; i < buffer.size(); i++) {
+            if (buffer.get(i).tag.equals(tag)) {
+                buffer.remove(i);
+                return true;
+            }
+        }
+        return false;
+    }
+
     public void broadcastResult(String tag, double result) {
         broadcastResult(tag, result, -1);
     }
@@ -101,6 +116,7 @@ public class StoreBuffer {
         public boolean executing = false;
         public int remainingCycles = 0;
         public int readyCycle = -1;  // cycle when this entry became ready (-1 means ready at issue or not yet)
+        public boolean completedExecution = false;  // true when execution is complete but waiting for write-back
 
         public StoreEntry(String tag, Instruction instruction) {
             this.tag = tag;
