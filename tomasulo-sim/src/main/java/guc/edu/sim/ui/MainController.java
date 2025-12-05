@@ -998,24 +998,17 @@ public class MainController {
         List<SimulatorState.InstructionStatus> statuses = sim.getInstructionStatuses();
         Program program = sim.getProgram();
         
-        // Track which (programIndex, iteration) pairs we already have in the UI
-        java.util.Set<String> existingEntries = new java.util.HashSet<>();
+        // Build a map of existing views by (programIndex, iteration) for efficient lookup
+        java.util.Map<String, InstructionRowView> existingViews = new java.util.HashMap<>();
         for (InstructionRowView view : instructions) {
-            existingEntries.add(view.getProgramIndex() + "_" + view.getIteration());
+            existingViews.put(view.getProgramIndex() + "_" + view.getIteration(), view);
         }
         
         // Update existing rows and add new rows for new iterations
         for (SimulatorState.InstructionStatus status : statuses) {
             String key = status.programIndex + "_" + status.iteration;
             
-            // Find existing view for this status
-            InstructionRowView matchingView = null;
-            for (InstructionRowView view : instructions) {
-                if (view.getProgramIndex() == status.programIndex && view.getIteration() == status.iteration) {
-                    matchingView = view;
-                    break;
-                }
-            }
+            InstructionRowView matchingView = existingViews.get(key);
             
             if (matchingView != null) {
                 // Update existing view
@@ -1030,7 +1023,7 @@ public class MainController {
                 String text = toDisplayStringWithIteration(instr, status.iteration);
                 
                 InstructionRowView newView = new InstructionRowView(
-                    instructions.size() + 1, // Row number
+                    instructions.size() + 1, // Row number (will be sequential as we add)
                     pcStr,
                     text,
                     status.issueCycle > 0 ? String.valueOf(status.issueCycle) : "-",
@@ -1041,6 +1034,7 @@ public class MainController {
                     status.programIndex
                 );
                 instructions.add(newView);
+                existingViews.put(key, newView); // Track newly added view
                 System.out.println("[UI] Added new row for instruction " + status.programIndex + " iteration " + status.iteration);
             }
         }
