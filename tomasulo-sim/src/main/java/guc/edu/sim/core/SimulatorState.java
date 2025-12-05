@@ -710,8 +710,10 @@ public class SimulatorState {
         for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
             if (loadEntry.baseReady) {
                 int loadAddress = loadEntry.computeAddress();
-                // If addresses match and load hasn't completed execution (not written back yet)
-                if (loadAddress == storeAddress && !loadEntry.completedExecution) {
+                // If addresses match and load is still in the buffer, it hasn't written back yet
+                // WAR dependency: Store must wait until the load completes write-back
+                // Load entries are removed from the buffer at write-back (see line 229)
+                if (loadAddress == storeAddress) {
                     System.out.println("[SimulatorState] Address conflict detected: " + 
                                      storeEntry.tag + " blocked by " + loadEntry.tag + 
                                      " at address " + storeAddress);
