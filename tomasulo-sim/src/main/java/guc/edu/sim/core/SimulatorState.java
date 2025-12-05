@@ -353,8 +353,8 @@ public class SimulatorState {
         List<ReservationStationEntry> finishedRS = dispatcher.tickUnits();
         debug("Dispatcher returned " + finishedRS.size() + " finished entries");
         for (ReservationStationEntry entry : finishedRS) {
-            // Skip entries that were already handled by Phase 5 (latency-1 detection)
-            // in the previous cycle - these are already marked as completed
+            // Skip entries that were already handled by the latency-1 detection phase
+            // (Phase 5) in the previous cycle - these are already marked as completed
             if (entry.isCompleted()) {
                 debug("Skipping already completed entry: " + entry.getId());
                 continue;
