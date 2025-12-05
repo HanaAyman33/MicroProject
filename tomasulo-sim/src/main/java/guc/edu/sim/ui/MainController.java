@@ -195,9 +195,7 @@ public class MainController {
         colInstrIndex.setCellValueFactory(new PropertyValueFactory<>("index"));
         colInstrPC.setCellValueFactory(new PropertyValueFactory<>("pc"));
         colInstrText.setCellValueFactory(new PropertyValueFactory<>("instruction"));
-        if (colIteration != null) {
-            colIteration.setCellValueFactory(new PropertyValueFactory<>("iteration"));
-        }
+        colIteration.setCellValueFactory(new PropertyValueFactory<>("iteration"));
         colIssue.setCellValueFactory(new PropertyValueFactory<>("issue"));
         colExecStart.setCellValueFactory(new PropertyValueFactory<>("execStart"));
         colExecEnd.setCellValueFactory(new PropertyValueFactory<>("execEnd"));
@@ -281,8 +279,8 @@ public class MainController {
 
     private void renderProgram(Program program) {
         instructions.clear();
-        // Initially don't show any instructions - they will be populated by updateInstructionTable()
-        // when instructions are issued
+        // Instructions will be populated dynamically by updateInstructionTable() when issued,
+        // allowing multiple iterations of the same instruction to be displayed separately
         refreshInstructionCount();
     }
 
@@ -448,7 +446,8 @@ public class MainController {
             System.out.println("[UI] Refreshing labels...");
             refreshAllLabels();
             
-            // Note: Issue cycle is now handled by updateInstructionTable() which rebuilds the table
+            // Issue cycle tracking moved to updateInstructionTable() to support displaying
+            // multiple iterations of the same instruction with separate timing data
             
             log("⏭ Stepped to cycle " + cycle);
             updateStatusBar("Executed cycle " + cycle);

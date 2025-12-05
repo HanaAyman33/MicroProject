@@ -121,6 +121,7 @@ public class SimulatorState {
         instructionStatuses.clear();
         instructionIterationCount.clear();
         // Don't pre-populate instruction statuses - they will be added dynamically when issued
+        // to support multiple iterations of the same instruction in loops
         pendingResults.clear();
         inFlight.clear();
         tagToInstruction.clear();
