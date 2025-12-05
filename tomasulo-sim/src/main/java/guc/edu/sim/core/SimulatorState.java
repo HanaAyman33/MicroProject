@@ -416,6 +416,12 @@ public class SimulatorState {
         // Phase 8: Start NEW store operations that are ready
         for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
             if (!storeEntry.executing && !storeEntry.completedExecution && storeEntry.isReadyForDispatch(currentCycle)) {
+                // Check for address conflicts with pending loads
+                if (hasAddressConflict(storeEntry)) {
+                    System.out.println("[StoreBuffer] " + storeEntry.tag + " BLOCKED due to address conflict with pending load");
+                    continue; // Don't issue this store yet
+                }
+                
                 storeEntry.executing = true;
                 int addr = storeEntry.computeAddress();
 
@@ -681,6 +687,39 @@ public class SimulatorState {
         
         debug("Default result = 0.0");
         return 0.0;
+    }
+    
+    /**
+     * Check if a store entry has an address conflict with any pending load.
+     * A conflict exists if:
+     * 1. Both store and load have computed their addresses (baseReady = true)
+     * 2. The addresses are the same
+     * 3. The load has not completed execution yet
+     * 
+     * @param storeEntry The store entry to check
+     * @return true if there's a conflict, false otherwise
+     */
+    private boolean hasAddressConflict(StoreBuffer.StoreEntry storeEntry) {
+        if (!storeEntry.baseReady) {
+            return false; // Can't determine address yet
+        }
+        
+        int storeAddress = storeEntry.computeAddress();
+        
+        // Check all load buffer entries
+        for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
+            if (loadEntry.baseReady) {
+                int loadAddress = loadEntry.computeAddress();
+                // If addresses match and load hasn't completed execution (not written back yet)
+                if (loadAddress == storeAddress && !loadEntry.completedExecution) {
+                    System.out.println("[SimulatorState] Address conflict detected: " + 
+                                     storeEntry.tag + " blocked by " + loadEntry.tag + 
+                                     " at address " + storeAddress);
+                    return true;
+                }
+            }
+        }
+        return false;
     }
     
     /**
