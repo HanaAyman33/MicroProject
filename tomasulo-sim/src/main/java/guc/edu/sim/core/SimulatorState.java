@@ -493,127 +493,20 @@ public class SimulatorState {
             branchUnit.clear();
         }
         
-        // Phase 10: Issue new instruction
-        // Try to issue instructions in order, but allow skipping stalled instructions
-        // (instructions blocked by structural hazards - no buffer/RS space)
+        // Phase 10: Issue new instruction (IN-ORDER ISSUE per Tomasulo's algorithm)
+        // Instructions must issue in strict program order. If the instruction at PC
+        // cannot be issued due to structural hazard (no buffer/RS space), the issue
+        // stage stalls - we do NOT skip to later instructions.
         boolean issued = false;
         int issuedPc = -1;
         String assignedTag = null;
         HazardSnapshot hazardSnapshot = null;
         
-        // First, check if any previously stalled instruction can now be issued
-        // We need to try stalled instructions first (in program order) before moving to new ones
-        List<Integer> stalledToCheck = new ArrayList<>(stalledInstructions);
-        Collections.sort(stalledToCheck);  // Process in program order
-        
-        for (int stalledPc : stalledToCheck) {
-            if (issued) break;
-            if (stalledPc >= program.size()) continue;
+        // Try to issue the instruction at current PC (strict in-order issue)
+        if (issueUnit.hasNext()) {
+            int currentPc = issueUnit.getPc();
             
-            Instruction instr = program.get(stalledPc);
-            boolean canIssue = false;
-            String tempTag = null;
-            HazardSnapshot tempHazard = null;
-            
-            switch (instr.getType()) {
-                case ALU_FP:
-                case ALU_INT:
-                    canIssue = rs.hasFreeFor(instr);
-                    if (canIssue) {
-                        tempHazard = detectHazards(instr);
-                        rs.accept(instr, null);
-                        tempTag = rs.getLastAllocatedTag();
-                        System.out.println("[Issue] Issued stalled to RS: " + instr.getOpcode() + " -> " + tempTag);
-                        debug("Stalled instruction issued: " + instr.getOpcode() + " tag=" + tempTag);
-                    }
-                    break;
-                case LOAD:
-                    canIssue = loadBuffer.hasFree();
-                    if (canIssue) {
-                        tempHazard = detectHazards(instr);
-                        loadBuffer.accept(instr);
-                        tempTag = loadBuffer.getLastAllocatedTag();
-                        System.out.println("[Issue] Issued stalled to Load Buffer: " + instr.getOpcode() + " -> " + tempTag);
-                    }
-                    break;
-                case STORE:
-                    canIssue = storeBuffer.hasFree();
-                    if (canIssue) {
-                        tempHazard = detectHazards(instr);
-                        storeBuffer.accept(instr);
-                        tempTag = storeBuffer.getLastAllocatedTag();
-                        System.out.println("[Issue] Issued stalled to Store Buffer: " + instr.getOpcode() + " -> " + tempTag);
-                    }
-                    break;
-                case BRANCH:
-                    canIssue = branchUnit.isFree();
-                    if (canIssue) {
-                        tempHazard = detectHazards(instr);
-                        branchUnit.accept(instr, null);
-                        tempTag = "BR" + (++branchTagCounter);
-                        activeBranchTag = tempTag;
-                        System.out.println("[Issue] Issued stalled to Branch Unit: " + instr.getOpcode());
-                    }
-                    break;
-                    case UNKNOWN:
-                    default:
-                        System.out.println("[Issue] Unsupported stalled instruction type: " + instr.getOpcode());
-                        break;
-            }
-            
-            if (canIssue) {
-                stalledInstructions.remove(stalledPc);
-                assignedTag = tempTag;
-                hazardSnapshot = tempHazard;
-                issuedPc = stalledPc;
-                issued = true;
-                
-                instr.setIssueCycle(currentCycle);
-                int currentIteration = iterationCountByIndex.getOrDefault(stalledPc, 1);
-                InstructionStatus currentStatus = findStatusForIteration(stalledPc, currentIteration);
-                if (currentStatus != null) {
-                    currentStatus.issueCycle = currentCycle;
-                    currentStatus.tag = assignedTag;
-                    int statusIndex = instructionStatuses.indexOf(currentStatus);
-                    tagToStatusIndex.put(assignedTag, statusIndex);
-                    debug("Stored tag " + assignedTag + " for stalled instruction at index " + stalledPc + " iteration " + currentIteration);
-                }
-                recordInstructionMix(instr);
-                if (hazardSnapshot != null) {
-                    if (hazardSnapshot.raw) rawHazards++;
-                    if (hazardSnapshot.war) warHazards++;
-                    if (hazardSnapshot.waw) wawHazards++;
-                }
-                trackIssuedInstruction(instr, assignedTag);
-                lastIssuedIndex = stalledPc;
-                
-                // If this was the instruction at PC, advance PC
-                if (stalledPc == issueUnit.getPc()) {
-                    // Advance PC past this instruction and any subsequent already-issued instructions
-                    int newPc = stalledPc + 1;
-                    while (newPc < program.size() && !stalledInstructions.contains(newPc) && isInstructionAlreadyIssued(newPc)) {
-                        newPc++;
-                    }
-                    issueUnit.jumpTo(newPc);
-                    System.out.println("[Issue] PC advanced from " + stalledPc + " to " + newPc);
-                }
-            }
-        }
-        
-        // If no stalled instruction was issued, try to issue instructions starting from PC
-        // If an instruction can't be issued, mark it stalled and try the next one
-        if (!issued && issueUnit.hasNext()) {
-            int startPc = issueUnit.getPc();
-            int currentPc = startPc;
-            
-            // Try to issue one instruction - could be at PC or beyond if PC is stalled
-            while (currentPc < program.size() && !issued) {
-                // Skip instructions already stalled from previous cycles
-                if (stalledInstructions.contains(currentPc)) {
-                    currentPc++;
-                    continue;
-                }
-                
+            if (currentPc < program.size()) {
                 Instruction instr = program.get(currentPc);
                 boolean canIssue = false;
                 
@@ -629,8 +522,7 @@ public class SimulatorState {
                             debug("Instruction issued: " + instr.getOpcode() + " tag=" + assignedTag);
                         } else {
                             structuralHazards++;
-                            stalledInstructions.add(currentPc);
-                            System.out.println("[Issue] STALLED at PC " + currentPc + " - No free RS for " + instr.getOpcode() + ", trying next...");
+                            System.out.println("[Issue] STALLED at PC " + currentPc + " - No free RS for " + instr.getOpcode());
                         }
                         break;
                         
@@ -643,8 +535,7 @@ public class SimulatorState {
                             System.out.println("[Issue] Issued to Load Buffer: " + instr.getOpcode() + " -> " + assignedTag);
                         } else {
                             structuralHazards++;
-                            stalledInstructions.add(currentPc);
-                            System.out.println("[Issue] STALLED at PC " + currentPc + " - No free Load Buffer for " + instr.getOpcode() + ", trying next...");
+                            System.out.println("[Issue] STALLED at PC " + currentPc + " - No free Load Buffer for " + instr.getOpcode());
                         }
                         break;
                         
@@ -657,8 +548,7 @@ public class SimulatorState {
                             System.out.println("[Issue] Issued to Store Buffer: " + instr.getOpcode() + " -> " + assignedTag);
                         } else {
                             structuralHazards++;
-                            stalledInstructions.add(currentPc);
-                            System.out.println("[Issue] STALLED at PC " + currentPc + " - No free Store Buffer for " + instr.getOpcode() + ", trying next...");
+                            System.out.println("[Issue] STALLED at PC " + currentPc + " - No free Store Buffer for " + instr.getOpcode());
                         }
                         break;
                         
@@ -672,8 +562,7 @@ public class SimulatorState {
                             System.out.println("[Issue] Issued to Branch Unit: " + instr.getOpcode());
                         } else {
                             structuralHazards++;
-                            stalledInstructions.add(currentPc);
-                            System.out.println("[Issue] STALLED at PC " + currentPc + " - Branch Unit busy for " + instr.getOpcode() + ", trying next...");
+                            System.out.println("[Issue] STALLED at PC " + currentPc + " - Branch Unit busy for " + instr.getOpcode());
                         }
                         break;
                     case UNKNOWN:
@@ -696,7 +585,7 @@ public class SimulatorState {
                         debug("WARNING: Could not find status for instruction " + currentPc + " iteration " + currentIteration);
                     }
                     
-                    // Advance PC past this instruction
+                    // Advance PC to next instruction
                     int newPc = currentPc + 1;
                     issueUnit.jumpTo(newPc);
                     
@@ -711,10 +600,9 @@ public class SimulatorState {
                     issuedPc = currentPc;
                     lastIssuedIndex = currentPc;
                     System.out.println("[Issue] PC advanced from " + currentPc + " to " + issueUnit.getPc());
-                } else {
-                    // Couldn't issue this instruction - try the next one
-                    currentPc++;
                 }
+                // If canIssue is false, we do NOT advance PC - the issue stage stalls
+                // and will retry the same instruction next cycle
             }
         }
         
@@ -734,11 +622,12 @@ public class SimulatorState {
         // - An instruction was issued this cycle, OR
         // - There are instructions still in-flight (not yet written back), OR
         // - There are pending results waiting to write-back, OR
-        // - There are stalled instructions waiting for resources
+        // - There are still instructions waiting to be issued (PC hasn't reached end)
+        boolean hasMoreToIssue = issueUnit.hasNext() && issueUnit.getPc() < program.size();
         boolean shouldContinue = issued || 
                                 hasInstructionsInFlight() || 
                                 !pendingResults.isEmpty() || 
-                                !stalledInstructions.isEmpty();
+                                hasMoreToIssue;
         
         return shouldContinue;
     }

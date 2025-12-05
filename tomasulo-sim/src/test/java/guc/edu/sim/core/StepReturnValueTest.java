@@ -3,14 +3,15 @@ package guc.edu.sim.core;
 import java.util.*;
 
 /**
- * Test for step() return value.
+ * Test for step() return value with in-order issue.
  * Verifies that step() returns true when the simulation should continue,
- * even when no instruction is issued in a cycle (e.g., instructions in-flight).
+ * even when no instruction is issued in a cycle (e.g., instructions in-flight
+ * or stalled waiting for resources).
  */
 public class StepReturnValueTest {
     
     public static void main(String[] args) {
-        System.out.println("=== Step Return Value Test ===\n");
+        System.out.println("=== Step Return Value Test (In-Order Issue) ===\n");
         
         SimulatorState sim = new SimulatorState();
         
@@ -36,18 +37,18 @@ public class StepReturnValueTest {
         
         List<String> lines = Arrays.asList(
             "L.D F6, 0(R2)",   // Issue cycle 1
-            "L.D F2, 8(R2)",   // Stalled - no load buffer space until buffer frees
-            "MUL.D F0, F2, F4" // Issue cycle 2 (can skip stalled L.D - waits for F2 in RS)
+            "L.D F2, 8(R2)",   // Stalled - no load buffer space until buffer frees (in-order: waits)
+            "MUL.D F0, F2, F4" // Issues after L.D F2 (in-order issue)
         );
         
         sim.loadProgramLines(lines);
         
-        System.out.println("Testing step() return values...\n");
+        System.out.println("Testing step() return values with in-order issue...\n");
         
         boolean testPassed = true;
         
         // Run simulation and track step() return values
-        for (int i = 0; i < 20; i++) {
+        for (int i = 0; i < 30; i++) {
             int cycleNum = i + 1;
             boolean stepResult = sim.step();
             
@@ -68,6 +69,7 @@ public class StepReturnValueTest {
                              " (allDone=" + allDone + ", hasInFlight=" + hasInFlight + ")");
             
             // Key test: step() should return true when there are instructions in-flight
+            // or when there are still instructions to issue (stalled or not)
             // Even if no new instruction is issued
             if (!allDone && !stepResult) {
                 System.out.println("  ERROR: step() returned false when simulation should continue!");
@@ -103,6 +105,18 @@ public class StepReturnValueTest {
             System.out.println("\nPASS: All instructions completed successfully");
         } else {
             System.out.println("\nFAIL: Some instructions did not complete");
+            testPassed = false;
+        }
+        
+        // Verify in-order issue: issue cycles should be strictly increasing
+        int ldF6Issue = statuses.get(0).issueCycle;
+        int ldF2Issue = statuses.get(1).issueCycle;
+        int mulIssue = statuses.get(2).issueCycle;
+        
+        if (ldF6Issue < ldF2Issue && ldF2Issue < mulIssue) {
+            System.out.println("PASS: Instructions issued in strict program order");
+        } else {
+            System.out.println("FAIL: Instructions did not issue in strict program order");
             testPassed = false;
         }
         
