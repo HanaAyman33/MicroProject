@@ -86,7 +86,9 @@ public class BranchUnit implements BranchUnitInterface {
         // Mark execution start when we first begin processing (latency countdown begins)
         if (executionStartCycle < 0 && currentCycle >= 0) {
             executionStartCycle = currentCycle;
-            System.out.println("[Branch] Execution started at cycle " + currentCycle);
+            // FIXED: For latency-1 branches, set remainingCycles to 0 so they complete in the same cycle
+            remainingCycles = Math.max(0, latency - 1);
+            System.out.println("[Branch] Execution started at cycle " + currentCycle + " (remainingCycles=" + remainingCycles + ")");
         }
         
         if (remainingCycles > 0) {
@@ -95,7 +97,7 @@ public class BranchUnit implements BranchUnitInterface {
         }
         
         boolean condition = false;
-        String opcode = currentBranch.getOpcode(). toUpperCase();
+        String opcode = currentBranch.getOpcode().toUpperCase();
         
         if (opcode.equals("BEQ")) {
             condition = (src1Val == src2Val);
