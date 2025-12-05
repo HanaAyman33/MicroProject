@@ -992,18 +992,11 @@ public class MainController {
             SimulatorState.InstructionStatus status = statuses. get(i);
             InstructionRowView view = instructions.get(i);
             
-            if (status.issueCycle > 0) {
-                view. issueProperty().set(String. valueOf(status.issueCycle));
-            }
-            if (status.execStartCycle > 0) {
-                view.execStartProperty().set(String.valueOf(status.execStartCycle));
-            }
-            if (status.execEndCycle > 0) {
-                view.execEndProperty().set(String.valueOf(status.execEndCycle));
-            }
-            if (status.writeBackCycle > 0) {
-                view.writeBackProperty().set(String.valueOf(status.writeBackCycle));
-            }
+            // Always update values to show latest execution timing for loop iterations
+            view.issueProperty().set(status.issueCycle > 0 ? String.valueOf(status.issueCycle) : "-");
+            view.execStartProperty().set(status.execStartCycle > 0 ? String.valueOf(status.execStartCycle) : "-");
+            view.execEndProperty().set(status.execEndCycle > 0 ? String.valueOf(status.execEndCycle) : "-");
+            view.writeBackProperty().set(status.writeBackCycle > 0 ? String.valueOf(status.writeBackCycle) : "-");
         }
     }
 
