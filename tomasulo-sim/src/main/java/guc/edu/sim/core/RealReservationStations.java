@@ -1,10 +1,11 @@
 package guc.edu.sim.core;
 
-import java. util. ArrayList;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Real implementation of reservation stations for FP and integer ALU operations.
+ * FIXED: Properly enforces reservation station size limits.
  */
 public class RealReservationStations implements ReservationStations {
     private final List<ReservationStationEntry> stations = new ArrayList<>();
@@ -30,13 +31,24 @@ public class RealReservationStations implements ReservationStations {
     public boolean hasFreeFor(Instruction instr) {
         StationType type = getStationType(instr);
         int max = getMaxSize(type);
-        long count = stations.stream(). filter(s -> s.getType() == type). count();
-        return count < max;
+        long count = stations.stream().filter(s -> s.getType() == type).count();
+        boolean hasFree = count < max;
+        
+        System.out.println("[RS] hasFreeFor " + instr.getOpcode() + " type=" + type + 
+                         ": current=" + count + "/" + max + " -> " + hasFree);
+        return hasFree;
     }
 
     @Override
     public void accept(Instruction instr, RegisterStatusTable regStatus) {
         StationType type = getStationType(instr);
+        
+        // FIXED: Double-check we actually have space before accepting
+        if (!hasFreeFor(instr)) {
+            System.out.println("[RS] ERROR: Attempted to accept instruction when RS is full!");
+            throw new IllegalStateException("Cannot accept instruction - reservation station is full");
+        }
+        
         String tag;
         switch (type) {
             case FP_ADD:
@@ -53,12 +65,12 @@ public class RealReservationStations implements ReservationStations {
         
         // Create entry with instruction reference
         ReservationStationEntry entry = new ReservationStationEntry(
-            tag, type, instr. getOpcode(), instr.getDest(), instr
+            tag, type, instr.getOpcode(), instr.getDest(), instr
         );
 
         // Read operands from register file
         String src1 = instr.getSrc1();
-        String src2 = instr. getSrc2();
+        String src2 = instr.getSrc2();
 
         if (src1 != null) {
             String producer = regFile.getProducer(src1);
@@ -96,7 +108,12 @@ public class RealReservationStations implements ReservationStations {
 
         stations.add(entry);
         lastAllocatedTag = tag;
-        System.out.println("[RS] Allocated " + tag + " for " + instr. getOpcode() + " -> " + entry);
+        
+        // FIXED: Log current RS occupancy
+        long count = stations.stream().filter(s -> s.getType() == type).count();
+        int max = getMaxSize(type);
+        System.out.println("[RS] Allocated " + tag + " for " + instr.getOpcode() + 
+                         " -> " + entry + " (now " + count + "/" + max + " " + type + " entries)");
     }
 
     private StationType getStationType(Instruction instr) {
@@ -126,7 +143,11 @@ public class RealReservationStations implements ReservationStations {
     }
 
     public void removeEntry(ReservationStationEntry entry) {
-        stations.remove(entry);
+        boolean removed = stations.remove(entry);
+        if (removed) {
+            System.out.println("[RS] Removed entry " + entry.getId() + 
+                             " (remaining: " + stations.size() + ")");
+        }
     }
 
     public void broadcastResult(String tag, double result) {
@@ -160,6 +181,7 @@ public class RealReservationStations implements ReservationStations {
             }
         }
         if (selfToRemove != null) {
+            System.out.println("[RS] Broadcast freeing RS entry " + selfToRemove.getId());
             stations.remove(selfToRemove);
         }
     }
@@ -168,4 +190,3 @@ public class RealReservationStations implements ReservationStations {
         return lastAllocatedTag;
     }
 }
- 
