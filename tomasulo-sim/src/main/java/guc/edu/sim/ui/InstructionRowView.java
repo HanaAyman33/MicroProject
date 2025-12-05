@@ -5,6 +5,7 @@ import javafx.beans.property.*;
 public class InstructionRowView {
 
     private final IntegerProperty index = new SimpleIntegerProperty();
+    private final IntegerProperty iteration = new SimpleIntegerProperty();
     private final StringProperty pc = new SimpleStringProperty();
     private final StringProperty instruction = new SimpleStringProperty();
     private final StringProperty issue = new SimpleStringProperty();
@@ -15,7 +16,14 @@ public class InstructionRowView {
     public InstructionRowView(int index, String pc, String instruction,
                               String issue, String execStart,
                               String execEnd, String writeBack) {
+        this(index, 1, pc, instruction, issue, execStart, execEnd, writeBack);
+    }
+    
+    public InstructionRowView(int index, int iteration, String pc, String instruction,
+                              String issue, String execStart,
+                              String execEnd, String writeBack) {
         this.index.set(index);
+        this.iteration.set(iteration);
         this.pc.set(pc);
         this.instruction.set(instruction);
         this.issue.set(issue);
@@ -26,6 +34,9 @@ public class InstructionRowView {
 
     public int getIndex() { return index.get(); }
     public IntegerProperty indexProperty() { return index; }
+
+    public int getIteration() { return iteration.get(); }
+    public IntegerProperty iterationProperty() { return iteration; }
 
     public String getPc() { return pc.get(); }
     public StringProperty pcProperty() { return pc; }
