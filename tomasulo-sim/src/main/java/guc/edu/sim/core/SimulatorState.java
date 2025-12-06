@@ -469,7 +469,8 @@ public class SimulatorState {
                 // FIXED: Write-back should happen the cycle AFTER execution ends
                 // Add branch result to pendingResults for write-back in next cycle
                 pendingResults.add(new PendingResult(activeBranchTag, 0.0, false, null));
-                activeBranchTag = null;
+                // NOTE: activeBranchTag is NOT cleared here - it will be cleared when the branch writes back
+                // This ensures subsequent instructions are stalled until branch write-back
             }
             if (branchUnit.shouldFlushQueue()) {
                 int targetPc = branchUnit.getResolvedTargetPc();
@@ -500,7 +501,13 @@ public class SimulatorState {
         String assignedTag = null;
         HazardSnapshot hazardSnapshot = null;
         
-        if (issueUnit.hasNext()) {
+        // Check if a branch is pending write-back - if so, stall all subsequent instructions
+        // According to Tomasulo's algorithm without branch prediction, instructions following
+        // a branch must wait until the branch writes back before they can be issued
+        if (activeBranchTag != null) {
+            debug("Branch stall: " + activeBranchTag + " pending write-back, cannot issue next instruction");
+            System.out.println("[Issue] STALLED - Branch " + activeBranchTag + " pending write-back");
+        } else if (issueUnit.hasNext()) {
             Instruction instr = program.get(issueUnit.getPc());
             
             boolean canIssue = false;
@@ -939,6 +946,13 @@ public class SimulatorState {
             debug("WARNING: Could not find instruction with tag " + tag + " for write-back!");
         }
         completeIssuedInstruction(tag);
+        
+        // Clear activeBranchTag when the branch writes back
+        // This allows subsequent instructions to issue in the same cycle
+        if (tag != null && tag.equals(activeBranchTag)) {
+            debug("Clearing activeBranchTag - branch " + tag + " has written back");
+            activeBranchTag = null;
+        }
     }
     
     private void printStatus() {
