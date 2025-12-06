@@ -505,6 +505,7 @@ public class SimulatorState {
         // According to Tomasulo's algorithm without branch prediction, instructions following
         // a branch must wait until the branch writes back before they can be issued
         if (activeBranchTag != null) {
+            debug("Branch stall: " + activeBranchTag + " pending write-back, cannot issue next instruction");
             System.out.println("[Issue] STALLED - Branch " + activeBranchTag + " pending write-back");
         } else if (issueUnit.hasNext()) {
             Instruction instr = program.get(issueUnit.getPc());
