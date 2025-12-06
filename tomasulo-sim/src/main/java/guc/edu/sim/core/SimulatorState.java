@@ -386,20 +386,24 @@ public class SimulatorState {
                 }
             }
         }
-        
-        // Phase 7: Start NEW load operations that are ready
+     // In Phase 7: Start NEW load operations that are ready
         for (LoadBuffer.LoadEntry loadEntry : loadBuffer.getBuffer()) {
             if (!loadEntry.executing && !loadEntry.completedExecution && loadEntry.isReadyForDispatch(currentCycle)) {
                 loadEntry.executing = true;
                 int addr = loadEntry.computeAddress();
 
                 Cache.CacheAccessResult result = cache.access(addr, memory);
-                // FIXED: The start cycle counts as the first cycle of execution.
-                // Formula: execEndCycle = execStartCycle + latency - 1
-                loadEntry.remainingCycles = Math.max(0, result.latency - 1);
+                
+                // FIXED: Load total latency = loadLatency + cache latency (either hitLatency or missPenalty)
+                int totalLatency = loadLatency + result.latency;
+                
+                // The start cycle counts as the first cycle of execution.
+                loadEntry.remainingCycles = Math.max(0, totalLatency - 1);
                 loadEntry.result = loadFromMemory(loadEntry.instruction, addr);
                 System.out.println("[LoadBuffer] " + loadEntry.tag + " LOADING from address " + addr +
-                                 " (latency=" + result.latency + " cycles, remainingCycles=" + loadEntry.remainingCycles + ")");
+                                 " (cache=" + (result.hit ? "HIT" : "MISS") + 
+                                 ", totalLatency=" + totalLatency + 
+                                 " cycles, remainingCycles=" + loadEntry.remainingCycles + ")");
                 markInstructionExecStart(loadEntry.tag, currentCycle);
                 
                 // FIXED: Handle latency 1 case - complete immediately in same cycle
@@ -412,8 +416,7 @@ public class SimulatorState {
                 }
             }
         }
-
-        // Phase 8: Start NEW store operations that are ready
+     // In Phase 8: Start NEW store operations that are ready
         for (StoreBuffer.StoreEntry storeEntry : storeBuffer.getBuffer()) {
             if (!storeEntry.executing && !storeEntry.completedExecution && storeEntry.isReadyForDispatch(currentCycle)) {
                 // Check for address conflicts with pending loads
@@ -426,15 +429,15 @@ public class SimulatorState {
                 int addr = storeEntry.computeAddress();
 
                 Cache.CacheAccessResult result = cache.access(addr, memory);
-                // FIXED: The start cycle counts as the first cycle of execution.
-                // Formula: execEndCycle = execStartCycle + latency - 1
-                storeEntry.remainingCycles = Math.max(0, result.latency - 1);
+                // FIXED: Store total latency = storeLatency + cache latency
+                int totalLatency = storeLatency + result.latency;
+                storeEntry.remainingCycles = Math.max(0, totalLatency - 1);
                 storeToMemory(storeEntry.instruction, addr, storeEntry.storeValue);
                 
-                // FIXED: Don't call cache.writeThrough here - it will be called at write-back
-                
                 System.out.println("[StoreBuffer] " + storeEntry.tag + " STORING " + storeEntry.storeValue +
-                                 " to address " + addr + " (latency=" + result.latency + ", remainingCycles=" + storeEntry.remainingCycles + ")");
+                                 " to address " + addr + " (cache=" + (result.hit ? "HIT" : "MISS") +
+                                 ", totalLatency=" + totalLatency + 
+                                 ", remainingCycles=" + storeEntry.remainingCycles + ")");
                 markInstructionExecStart(storeEntry.tag, currentCycle);
                 
                 // FIXED: Handle latency 1 case - complete immediately in same cycle

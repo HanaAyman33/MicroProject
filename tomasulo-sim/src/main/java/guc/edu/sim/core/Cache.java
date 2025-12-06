@@ -40,6 +40,8 @@ public class Cache {
      * Access the cache. Returns the latency and whether it's a hit.
      * On a miss, the cache line is NOT updated immediately - it's marked as pending.
      */
+ // In Cache.java, access() method - change the miss case:
+
     public CacheAccessResult access(int address, Memory memory) {
         int blockAddress = (address / blockSize) * blockSize;
         int index = (address / blockSize) % numBlocks;
@@ -55,7 +57,7 @@ public class Cache {
             
             // Load block from memory (we need the data reference)
             byte[] block = memory.loadBlock(blockAddress, blockSize);
-            return new CacheAccessResult(false, hitLatency + missPenalty, block, blockAddress);
+            return new CacheAccessResult(false, missPenalty, block, blockAddress);
         }
         
         if (line.isValid() && line.getTag() == tag) {
@@ -71,8 +73,8 @@ public class Cache {
             // Load block from memory
             byte[] block = memory.loadBlock(blockAddress, blockSize);
             
-            // The caller needs to call completeFill() after the appropriate cycles
-            return new CacheAccessResult(false, hitLatency + missPenalty, block, blockAddress);
+            // FIXED: Return missPenalty only, not hitLatency + missPenalty
+            return new CacheAccessResult(false, missPenalty, block, blockAddress);
         }
     }
     
