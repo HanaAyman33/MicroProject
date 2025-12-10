@@ -20,6 +20,7 @@ public class SimulatorState {
     private CommonDataBus cdb;
     private LatencyConfig latencyConfig;
     private final List<PendingResult> pendingResults = new ArrayList<>();
+    private final Set<String> slotsToFreeNextCycle = new HashSet<>();
     
     private int lastIssuedIndex = -1;
     private List<InstructionStatus> instructionStatuses = new ArrayList<>();
@@ -67,6 +68,48 @@ public class SimulatorState {
     private static final boolean DEBUG = true;
     private void debug(String msg) {
         if (DEBUG) System.out.println("[DEBUG] " + msg);
+    }
+    
+    /**
+     * Free resources that were scheduled to be released in this cycle.
+     * This ensures buffers/stations stay occupied for the full write-back cycle.
+     */
+    private void processDeferredSlotReleases(int currentCycle) {
+        if (slotsToFreeNextCycle.isEmpty()) {
+            return;
+        }
+        
+        debug("Releasing " + slotsToFreeNextCycle.size() + " deferred slot(s) at start of cycle " + currentCycle);
+        Set<String> toFree = new HashSet<>(slotsToFreeNextCycle);
+        slotsToFreeNextCycle.clear();
+        
+        for (String tag : toFree) {
+            boolean removedFromRs = rs.removeEntryByTag(tag);
+            boolean removedFromLoad = loadBuffer.removeEntryByTag(tag);
+            boolean removedFromStore = storeBuffer.removeEntryByTag(tag);
+            
+            if (removedFromRs || removedFromLoad || removedFromStore) {
+                debug("Freed resources for " + tag + " (RS=" + removedFromRs + 
+                      ", LOAD=" + removedFromLoad + ", STORE=" + removedFromStore + ")");
+            } else {
+                debug("No matching resource to free for tag " + tag + " (likely branch or already freed)");
+            }
+        }
+    }
+    
+    private void scheduleSlotFree(String tag) {
+        scheduleSlotFree(tag, null);
+    }
+    
+    private void scheduleSlotFree(String tag, String reason) {
+        if (tag == null) return;
+        if (slotsToFreeNextCycle.add(tag)) {
+            if (reason != null) {
+                debug("Scheduled " + tag + " for release next cycle (" + reason + ")");
+            } else {
+                debug("Scheduled " + tag + " for release next cycle");
+            }
+        }
     }
 
     public void loadProgramLines(List<String> lines) {
@@ -131,6 +174,7 @@ public class SimulatorState {
             iterationCountByIndex.put(i, 1);
         }
         pendingResults.clear();
+        slotsToFreeNextCycle.clear();
         inFlight.clear();
         tagToInstruction.clear();
         rawHazards = warHazards = wawHazards = structuralHazards = 0;
@@ -180,6 +224,9 @@ public class SimulatorState {
         if (program == null || issueUnit == null) return false;
         
         int currentCycle = SimulationClock.getCycle() + 1;
+        
+        // Free any slots that completed write-back in the previous cycle
+        processDeferredSlotReleases(currentCycle);
         System.out.println("\n========== Cycle " + currentCycle + " ==========");
         
         debug("=== CYCLE " + currentCycle + " START ===");
@@ -203,11 +250,7 @@ public class SimulatorState {
                 if (!pr.broadcast) {
                     iterator.remove();
                     markInstructionWriteBack(pr.tag, currentCycle);
-                    
-                    // Remove entry from buffer at write-back (STORE instructions)
-                    if (storeBuffer.removeEntryByTag(pr.tag)) {
-                        debug("Removed STORE entry " + pr.tag + " from buffer at write-back");
-                    }
+                    scheduleSlotFree(pr.tag, "store/write-back");
                     
                     // FIXED: Handle STORE cache update at write-back
                     if (pr.memoryAddress != null) {
@@ -224,11 +267,7 @@ public class SimulatorState {
                     broadcastThisCycle = pr;
                     iterator.remove();
                     markInstructionWriteBack(pr.tag, currentCycle);
-                    
-                    // Remove entry from buffer at write-back (LOAD instructions)
-                    if (loadBuffer.removeEntryByTag(pr.tag)) {
-                        debug("Removed LOAD entry " + pr.tag + " from buffer at write-back");
-                    }
+                    scheduleSlotFree(pr.tag, "broadcast/write-back");
                     
                     debug("Selected for CDB broadcast: " + pr.tag);
                 } else {

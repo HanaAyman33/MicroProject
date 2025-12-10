@@ -149,22 +149,30 @@ public class RealReservationStations implements ReservationStations {
                              " (remaining: " + stations.size() + ")");
         }
     }
+    
+    /**
+     * Remove an entry by its tag if it exists.
+     * This is used when freeing a station in a later cycle after write-back.
+     * @param tag reservation station tag (e.g. A1, M2, I3)
+     * @return true if an entry was removed
+     */
+    public boolean removeEntryByTag(String tag) {
+        for (int i = 0; i < stations.size(); i++) {
+            if (stations.get(i).getId().equals(tag)) {
+                stations.remove(i);
+                System.out.println("[RS] Removed entry " + tag + " by tag lookup");
+                return true;
+            }
+        }
+        return false;
+    }
 
     public void broadcastResult(String tag, double result) {
         broadcastResult(tag, result, -1);
     }
     
     public void broadcastResult(String tag, double result, int currentCycle) {
-        ReservationStationEntry selfToRemove = null;
         for (ReservationStationEntry entry : stations) {
-            // When the producing instruction's own result is broadcast, we
-            // free its reservation-station slot *after* write-back. This
-            // models structural hazards correctly: new instructions cannot
-            // reuse this station until the value has been written back.
-            if (tag.equals(entry.getId())) {
-                selfToRemove = entry;
-                continue;
-            }
             if (tag.equals(entry.getQj())) {
                 if (currentCycle >= 0) {
                     entry.setVj(result, currentCycle);
@@ -179,10 +187,6 @@ public class RealReservationStations implements ReservationStations {
                     entry.setVk(result);
                 }
             }
-        }
-        if (selfToRemove != null) {
-            System.out.println("[RS] Broadcast freeing RS entry " + selfToRemove.getId());
-            stations.remove(selfToRemove);
         }
     }
 
